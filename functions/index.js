@@ -1,4 +1,4 @@
-require('@google-cloud/debug-agent').start({ allowExpressions: true });
+require('@google-cloud/debug-agent').start({allowExpressions: true});
 
 var functions = require('firebase-functions');
 const admin = require('firebase-admin');
@@ -6,48 +6,65 @@ admin.initializeApp(functions.config().firebase);
 
 // Adds a message that welcomes new users into the chat.
 exports.addUserToDatabase = functions.auth.user().onCreate(event => {
-  const user = event.data;
-  console.log('A new user signed in for the first time.');
-  return admin.database().ref('Users').child(user.uid).set({
-    name: user.displayName || 'None',
-    email: user.email || 'None',
-    photoUrl: user.photoURL || 'None'
-  });
+    const user = event.data;
+    console.log('A new user signed in for the first time.');
+    return admin.database().ref('Users').child(user.uid).set({
+        name: user.displayName || 'None',
+        email: user.email || 'None',
+        photoUrl: user.photoURL || 'None'
+    });
 });
 
-exports.sendWelcomNotification = functions.database.ref('Users/{UUID}/deviceToken').onWrite(event=>{
+exports.sendWelcomNotification = functions.database.ref('Users/{UUID}/deviceToken').onWrite(event=> {
+
+    var def = q.defer();
+
     var registrationToken = event.data.val();
-    if(registrationToken == null){
-        return;
+    if (registrationToken == null) {
+        def.reject();
+        return def.promise;
     }
     // See the "Defining the message payload" section below for details on how to define a message payload.
-    var payload = {
-        notification: {
-            priority : "high",
-            title: 'Welcom to Floryt'
-        },
-        data: {
-            uid: getUIDByUsername('stiva1999@gmail.com')
-        }
-    };
-    // console.log(registrationToken);
-    return admin.messaging().sendToDevice(registrationToken, payload)
-        .then(function(response) {
-            // See the MessagingDevicesResponse reference documentation for the contents of response.
-            console.log("Successfully sent message:", response);
+
+    getUIDByUsername('stiva1999@gmail.com')
+        .then((uid) => {
+
+            var payload = {
+                notification: {
+                    priority: "high",
+                    title: 'Welcom to Floryt'
+                },
+                data: {
+                    uid: uid
+                }
+            };
+
+            // console.log(registrationToken);
+            admin.messaging().sendToDevice(registrationToken, payload)
+                .then(function (response) {
+                    // See the MessagingDevicesResponse reference documentation for the contents of response.
+                    console.log("Successfully sent message:", response);
+                    def.resolve();
+                })
+                .catch(function (error) {
+                    console.log("Error sending message:", error);
+                    def.reject();
+                });
+
         })
-        .catch(function(error) {
-            console.log("Error sending message:", error);
-        });
+        .catch(() => def.reject());
+
+
+    return def.promise;
+
 });
 
 exports.DllCommunication = functions.https.onRequest((req, res) => {
     console.log("Got: ", req.method);
-    if(req.method == "GET"){
+    if (req.method == "GET") {
         res.status(200).send('OK');
     }
-    else if(req.method == 'POST')
-    {
+    else if (req.method == 'POST') {
         console.log(req.body);
         const username = req.body.username;
         const computerUID = req.body.computerUID;
@@ -59,25 +76,23 @@ exports.DllCommunication = functions.https.onRequest((req, res) => {
 
         res.status(200).send(answer);
     }
-    else
-    {
+    else {
         res.status(404).send('Method not supported')
     }
 });
 
 exports.DllCommunicationDelay = functions.https.onRequest((req, res) => {
     console.log("Got: ", req.method);
-    if(req.method == "GET"){
-        setTimeout(function() {
+    if (req.method == "GET") {
+        setTimeout(function () {
             res.status(200).send('OK');
         }, 10000);
     }
-    else if(req.method == 'POST')
-    {
+    else if (req.method == 'POST') {
         console.log(req.body);
         const username = req.body.username;
         const computerUID = req.body.computerUID;
-        setTimeout(function() {
+        setTimeout(function () {
             var answer = {
                 access: getPromition(username, computerUID),
                 message: 'delayed massage from admin'
@@ -86,8 +101,7 @@ exports.DllCommunicationDelay = functions.https.onRequest((req, res) => {
             res.status(200).send(answer);
         }, 10000);
     }
-    else
-    {
+    else {
         res.status(404).send('Method not supported')
     }
 });
@@ -95,21 +109,29 @@ exports.DllCommunicationDelay = functions.https.onRequest((req, res) => {
 function getPromition(username, computerUID) {
     var adminUIDs = findAdmins(computerUID);
     var userUID = getUIDByUsername(username);
-    adminUIDs.forEach(function(adminUID) {
+    adminUIDs.forEach(function (adminUID) {
         sendNotification(adminUID, username, computerUID);
     }, this);
     sendNotification(userUID, username, computerUID);
-    return username === 'Steven' && computerUID === "123456789"? true: false;
+    return username === 'Steven' && computerUID === "123456789" ? true : false;
 }
 
-function findAdmins(params) {return new Array(0);}
+function findAdmins(params) {
+    return new Array(0);
+}
 
 function getUIDByUsername(username) {
-    var k = admin.auth().getUserByEmail(username).then(function(userRecored) {
-        console.log(userRecored.uid);
-        return userRecored.uid;
-    });
-    return k;
+
+    var def = q.defer();
+
+    admin.auth()
+        .getUserByEmail(username)
+        .then(function (userRecored) {
+            console.log(userRecored.uid);
+            def.resolve(userRecored.uid)
+        });
+
+    return def.promise;
 }
 
 function sendNotification(userUID, username, computerUID) {
