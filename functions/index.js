@@ -5,39 +5,35 @@ const admin = require('firebase-admin');
 admin.initializeApp(functions.config().firebase);
 
 // Adds a message that welcomes new users into the chat.
-exports.addWelcomeMessages = functions.auth.user().onCreate(event => {
+exports.addUserToDatabase = functions.auth.user().onCreate(event => {
   const user = event.data;
   console.log('A new user signed in for the first time.');
-
-  // Saves the new welcome message into the database
-  // which then displays it in the FriendlyChat clients.
-  return admin.database().ref('Users').push({
+  return admin.database().ref('Users').child(user.uid).set({
     name: user.displayName || 'None',
     email: user.email || 'None',
-    UID: user.uid || 'None',
     photoUrl: user.photoURL || 'None'
   });
 });
 
-exports.sendWelcomNotification = functions.database.ref('Tokens/{UUID}/').onWrite(event=>{
+exports.sendWelcomNotification = functions.database.ref('Users/{UUID}/deviceToken').onWrite(event=>{
     var registrationToken = event.data.val();
     if(registrationToken == null){
         return;
     }
-    // See the "Defining the message payload" section below for details
-    // on how to define a message payload.
+    // See the "Defining the message payload" section below for details on how to define a message payload.
     var payload = {
-    notification: {
-        title: 'Welcom to floryt'
-      }
+        notification: {
+            priority : "high",
+            title: 'Welcom to Floryt'
+        },
+        data: {
+            uid: getUIDByUsername('stiva1999@gmail.com')
+        }
     };
-    console.log(registrationToken);
-    // Send a message to the device corresponding to the provided
-    // registration token.
+    // console.log(registrationToken);
     return admin.messaging().sendToDevice(registrationToken, payload)
         .then(function(response) {
-            // See the MessagingDevicesResponse reference documentation for
-            // the contents of response.
+            // See the MessagingDevicesResponse reference documentation for the contents of response.
             console.log("Successfully sent message:", response);
         })
         .catch(function(error) {
@@ -107,8 +103,17 @@ function getPromition(username, computerUID) {
 }
 
 function findAdmins(params) {return new Array(0);}
-function getUIDByUsername(params) {return 0;}
-function sendNotification(userUID, username, computerUID) {}
+
+function getUIDByUsername(username) {
+    var k = admin.auth().getUserByEmail(username).then(function(userRecored) {
+        console.log(userRecored.uid);
+        return userRecored.uid;
+    });
+    return k;
+}
+
+function sendNotification(userUID, username, computerUID) {
+}
 
 
 // exports.date = functions.https.onRequest((req, res) => {
