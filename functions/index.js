@@ -1,11 +1,10 @@
-require('@google-cloud/debug-agent').start({allowExpressions: true});
+require('@google-cloud/debug-agent').start({ allowExpressions: true });
 
 var functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const q = require('q')
 admin.initializeApp(functions.config().firebase);
 
-// Adds a message that welcomes new users into the chat.
 exports.addUserToDatabase = functions.auth.user().onCreate(event => {
     const user = event.data;
     console.log('A new user signed in for the first time.');
@@ -14,39 +13,6 @@ exports.addUserToDatabase = functions.auth.user().onCreate(event => {
         email: user.email || 'None',
         photoUrl: user.photoURL || 'None'
     });
-});
-
-exports.sendWelcomNotification = functions.database.ref('Users/{UUID}/deviceToken').onWrite(event=> {
-    var def = q.defer();
-
-    var registrationToken = event.data.val();
-    if (registrationToken == null) {
-        def.reject();
-        return def.promise;
-    }
-    getUIDByemail('stiva1999@gmail.com')
-        .then((uid) => {
-            // See the "Defining the message payload" section below for details on how to define a message payload.
-            var payload = {
-                notification: {
-                    priority: "high",
-                    title: 'Welcom to Floryt'
-                }
-            };
-            admin.messaging().sendToDevice(registrationToken, payload)
-                .then(function (response) {
-                    // See the MessagingDevicesResponse reference documentation for the contents of response.
-                    console.log("Successfully sent message:", response);
-                    def.resolve();
-                })
-                .catch(function (error) {
-                    console.log("Error sending message:", error);
-                    def.reject();
-                });
-        })
-        .catch(def.reject);
-
-    return def.promise;
 });
 
 exports.DllCommunication = functions.https.onRequest((req, res) => {
@@ -59,8 +25,8 @@ exports.DllCommunication = functions.https.onRequest((req, res) => {
         const email = req.body.email;
         const computerUID = req.body.computerUID;
         const isGuest = req.body.isGuest;
-
-        getPromition(email, computerUID).then((isApproved) =>{
+        getPromition(email, computerUID)
+            .then((isApproved) => {
             var answer = {
                 access: isApproved,
                 message: 'Custom massage from admin'
@@ -68,23 +34,23 @@ exports.DllCommunication = functions.https.onRequest((req, res) => {
             answer = JSON.stringify(answer);
             console.log("Sent: ", answer);
             res.status(200).send(answer);
-        }); 
+            });
     }
     else {
-        res.status(404).send('Method not supported')
+        res.status(404).send('Method not supported');
     }
 });
 
 function getPromition(email, computerUID) {
     var def = q.defer();
-    
-    getUIDByemail(email).then((uid) =>{
+
+    getUIDByemail(email).then((uid) => {
         return getTokenByUID(uid, email, computerUID);
-    }).then((token) =>{
+    }).then((token) => {
         return sendNotification(token, email, computerUID);
-    }).then((isSent)=>{
+    }).then((isSent) => {
         def.resolve(isSent);
-    }).catch((error) =>{
+    }).catch((error) => {
         console.log("Error in getting promition: ", error);
         def.reject();
     });
@@ -105,7 +71,7 @@ function getUIDByemail(email) {
         .then(function (userRecored) {
             console.log("Got UID: ", userRecored.uid);
             def.resolve(userRecored.uid);
-        }).catch((error) =>{
+        }).catch((error) => {
             console.log("Error getting UID: ", error);
             def.reject();
         });
@@ -115,9 +81,9 @@ function getUIDByemail(email) {
 function getTokenByUID(uid) {
     console.log("Getting token of ", uid);
     var def = q.defer();
-    if (uid == undefined){
+    if (uid == undefined) {
         def.reject();
-        return def.promise;admin.database()
+        return def.promise;
     }
     var db = admin.database();
     var usersRef = db.ref('Users');
@@ -127,10 +93,6 @@ function getTokenByUID(uid) {
             console.log("Got token: ", snapshot.val());
             def.resolve(snapshot.val());
         });
-        // .catch((error) =>{
-        //     console.log("Error getting token: ", error);
-        //     def.reject();
-        // });
     return def.promise;
 }
 
@@ -138,56 +100,40 @@ function sendNotification(token, email, computerUID) {
     console.log("Sending notification to: ", token);
     var def = q.defer();
 
-    var payload = {
-        notification: {
-            priority: "high",
-            title: email + ' wants to enter your PC',
-            body: computerUID
-        }
-    };
+    var payload =
+        {
+            data: {
+                priority: 'high',
+                userEmail: email,
+                computer: computerUID,
+            },
+            notification: {
+                priority: "high",
+                title: email + ' wants to enter your PC',
+                body: computerUID
+            }
+        };
     console.log("Sending: ", payload);
     admin.messaging().sendToDevice(token, payload)
-                .then(function (response) {
-                    // See the MessagingDevicesResponse reference documentation for the contents of response.
-                    console.log("Successfully sent message:", response);
-                    def.resolve(true);
-                })
-                .catch(function (error) {
-                    console.log("Error sending message:", error);
-                    def.reject();
-                });
+        .then(function (response) {
+            // See the MessagingDevicesResponse reference documentation for the contents of response.
+            console.log("Successfully sent message:", response);
+            def.resolve(true);
+        })
+        .catch(function (error) {
+            console.log("Error sending message:", error);
+            def.reject();
+        });
 
     return def.promise;
 }
 
-
-// exports.date = functions.https.onRequest((req, res) => {
-// // [END trigger]
-//   // [START sendError]
-//   // Forbidding PUT requests.
-//   if (req.method === 'PUT') {
-//     res.status(403).send('Forbidden!');
-//   }
-//   // [END sendError]
-
-//   // [START usingMiddleware]
-//   // Enable CORS using the `cors` express middleware.
-//   cors(req, res, () => {
-//   // [END usingMiddleware]
-//     // Reading date format from URL query parameter.
-//     // [START readQueryParam]
-//     let format = req.query.format;
-//     // [END readQueryParam]
-//     // Reading date format from request body query parameter
-//     if (!format) {
-//       // [START readBodyParam]
-//       format = req.body.format;
-//       // [END readBodyParam]
-//     }
-//     // [START sendResponse]
-//     const formattedDate = moment().format(format);
-//     console.log('Sending Formatted date:', formattedDate);
-//     res.status(200).send(formattedDate);
-//     // [END sendResponse]
-//   });
-// });
+function createNotification(title, body, priority = "high") {
+    return {
+        notification: {
+            priority: "high",
+            title: title,
+            body: body
+        }
+    };
+}
