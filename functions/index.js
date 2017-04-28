@@ -2,138 +2,225 @@ require('@google-cloud/debug-agent').start({ allowExpressions: true });
 
 var functions = require('firebase-functions');
 const admin = require('firebase-admin');
-const q = require('q')
+const q = require('q');
 admin.initializeApp(functions.config().firebase);
 
-exports.addUserToDatabase = functions.auth.user().onCreate(event => {
-    const user = event.data;
-    console.log('A new user signed in for the first time.');
-    return admin.database().ref('Users').child(user.uid).set({
-        name: user.displayName || 'None',
-        email: user.email || 'None',
-        photoUrl: user.photoURL || 'None'
+exports.obtainIdentityVerification = functions.https.onRequest((req, res) => {
+    console.log("Got: ", req.method);
+    if (req.method !== 'POST') {
+        res.status(404).send('Method not supported');
+        return;
+    }
+    console.log(req.body);
+    const email = req.body.email;
+    verifyIdentity(email).then(({isVerified, message}) => {
+        let answer = {
+            access: isVerified,
+            message: message || ''
+        };
+        answer = JSON.stringify(answer);
+        console.log("Sent: ", answer);
+        res.status(200).send(answer);
+    })
+    .catch((error) => {
+        console.log("Failed to verify user: ", error);
+        res.status(200).send({
+            access: false,
+            message: "internal error"
+        });
     });
 });
 
-exports.DllCommunication = functions.https.onRequest((req, res) => {
+exports.obtainAdminPermission = functions.https.onRequest((req, res) => {
     console.log("Got: ", req.method);
-    if (req.method == "GET") {
-        res.status(200).send('OK');
-    }
-    else if (req.method == 'POST') {
-        console.log(req.body);
-        const email = req.body.email;
-        const computerUID = req.body.computerUID;
-        const isGuest = req.body.isGuest;
-        getPromition(email, computerUID)
-            .then((isApproved) => {
-            var answer = {
-                access: isApproved,
-                message: 'Custom massage from admin'
-            };
-            answer = JSON.stringify(answer);
-            console.log("Sent: ", answer);
-            res.status(200).send(answer);
-            });
-    }
-    else {
+    if (req.method !== 'POST') {
         res.status(404).send('Method not supported');
+        return;
     }
+    console.log(req.body);
+    const email = req.body.email;
+    const computerUID = req.body.computerUID;
+    obtainPermission(email, computerUID).then(({isPermitted, message}) => {
+        let answer = {
+            access: isPermitted,
+            message: message || ''
+        };
+        answer = JSON.stringify(answer);
+        console.log("Sent: ", answer);
+        res.status(200).send(answer);
+    }).catch((error) => {
+        console.log("Failed to verify user: ", error);
+        res.status(200).send({
+            access: false,
+            message: "internal error"
+        });
+    });
 });
 
-function getPromition(email, computerUID) {
-    var def = q.defer();
+exports.connectivityCheck = functions.https.onRequest((req, res) => {
+    console.log("Got: ", req.method);
+    res.status(200).send("OK");
+});
 
-    getUIDByemail(email).then((uid) => {
-        return getTokenByUID(uid, email, computerUID);
-    }).then((token) => {
-        return sendNotification(token, email, computerUID);
-    }).then((isSent) => {
-        def.resolve(isSent);
+function obtainPermission(email, computerUID) {
+    let def = q.defer();
+
+    getUIDByEmail(email).then((userUID) => {
+        return getTokenByUID(userUID);
+    }).then(({token, userUID}) => {
+        return sendNotification(token, userUID, computerUID);
+    }).then((userUID) => {
+        def.resolve(true);
     }).catch((error) => {
-        console.log("Error in getting promition: ", error);
+        console.log("Error in getting permission: ", error);
         def.reject();
     });
 
     return def.promise;
 }
 
-function findAdminsByComputer(params) {
-    var def = q.defer();
+function verifyIdentity(email) {
+    let def = q.defer();
+    getUIDByEmail(email).then((userUID) => {
+        return getTokenByUID(userUID);
+    }).then(({token, userUID}) => {
+        return sendIdentityVerificationRequest(token, userUID);
+    }).then((userUID) => {
+        return obtainIdentityVerification(userUID);
+    }).then((identityVerification) =>{
+        def.resolve({isVerified: identityVerification});
+    }).catch((error) => {
+        console.log("Error in verification: ", error);
+        def.reject();
+    });
 
     return def.promise;
 }
 
-function getUIDByemail(email) {
+function getUIDByEmail(email) {
     console.log("Getting UID of ", email);
-    var def = q.defer();
+    let def = q.defer();
     admin.auth().getUserByEmail(email)
-        .then(function (userRecored) {
+        .then(userRecored => {
             console.log("Got UID: ", userRecored.uid);
             def.resolve(userRecored.uid);
-        }).catch((error) => {
+        }).catch(error => {
             console.log("Error getting UID: ", error);
             def.reject();
         });
     return def.promise;
 }
 
-function getTokenByUID(uid) {
-    console.log("Getting token of ", uid);
-    var def = q.defer();
-    if (uid == undefined) {
+function getTokenByUID(userUID) {
+    console.log("Getting token of ", userUID);
+    let def = q.defer();
+    if (userUID === undefined) {
         def.reject();
         return def.promise;
     }
-    var db = admin.database();
-    var usersRef = db.ref('Users');
-    var userRef = usersRef.child(uid);
-    userRef.child('deviceToken')
+    admin.database().ref('Users').child(userUID).child('deviceToken')
         .on('value', snapshot => {
             console.log("Got token: ", snapshot.val());
-            def.resolve(snapshot.val());
+            def.resolve({token: snapshot.val(), userUID: userUID});
         });
     return def.promise;
 }
 
-function sendNotification(token, email, computerUID) {
+function sendNotification(token, userUID, computerUID) {
     console.log("Sending notification to: ", token);
-    var def = q.defer();
-
-    var payload =
-        {
-            data: {
-                priority: 'high',
-                userEmail: email,
-                computer: computerUID,
-            },
-            notification: {
-                priority: "high",
-                title: email + ' wants to enter your PC',
-                body: computerUID
-            }
-        };
-    console.log("Sending: ", payload);
-    admin.messaging().sendToDevice(token, payload)
-        .then(function (response) {
-            // See the MessagingDevicesResponse reference documentation for the contents of response.
-            console.log("Successfully sent message:", response);
-            def.resolve(true);
-        })
-        .catch(function (error) {
-            console.log("Error sending message:", error);
-            def.reject();
-        });
+    let def = q.defer();
+    
+    createPermissionRequestPayload(userUID, computerUID).then(payload => {
+        console.log("Sending: ", payload);
+        admin.messaging().sendToDevice(token, payload)
+            .then(function (response) {
+                // See the MessagingDevicesResponse reference documentation for the contents of response.
+                console.log("Successfully sent message:", response);
+                def.resolve(userUID);
+            })
+            .catch(function (error) {
+                console.log("Error sending message:", error);
+                def.reject();
+            });
+    });
 
     return def.promise;
 }
 
-function createNotification(title, body, priority = "high") {
-    return {
-        notification: {
-            priority: "high",
-            title: title,
-            body: body
-        }
-    };
+function createVerificationPayload(userUID) {
+    let def = q.defer();
+    admin.auth().getUser(userUID).then(user => {
+        console.log("User: ", user.toJSON());
+        console.log(user.displayName, user.email, user.photoURL);
+        let payload =
+            {
+                data: {
+                    priority: 'high',
+                    userEmail: user.email,
+                    userName: user.displayName,
+                    userPhotoUrl: user.photoURL
+                }
+            };
+        def.resolve(payload);
+    });
+    return def.promise;
 }
+
+function sendIdentityVerificationRequest(token, userUID){
+    console.log("Sending verification request to: ", token);
+    let def = q.defer();
+    createVerificationPayload(userUID).then(payload => {
+        console.log("Sending: ", payload);
+        admin.messaging().sendToDevice(token, payload)
+            .then(function (response) {
+                console.log("Successfully sent message:", response);
+                def.resolve(userUID);
+            })
+            .catch(function (error) {
+                console.log("Error sending message:", error);
+                def.reject();
+            });
+    });
+    return def.promise;
+}
+
+function obtainIdentityVerification(userUID){
+    let def = q.defer();
+    def.resolve(true);
+    return def.promise;
+}
+
+function createPermissionRequestPayload(userUID, computerUID) {
+    console.log("Creating payload about user: ", userUID);
+    let def = q.defer();
+    admin.auth().getUser(userUID).then(user => {
+        console.log("User: ", user.toJSON());
+        console.log(user.displayName, user.email, user.photoURL);
+        let payload =
+            {
+                data: {
+                    priority: 'high',
+                    userEmail: user.email,
+                    userName: user.displayName,
+                    userPhotoUrl: user.photoURL,
+                    computer: computerUID,
+                }
+            };
+        console.log("Created payload: ", payload);
+        def.resolve(payload);
+    }).catch(error => {
+        console.log("Failed to create payload: ", error);
+        def.reject();
+    });
+    return def.promise;
+}
+
+// function createNotification(title, body, priority = "high") {
+//     return {
+//         notification: {
+//             priority: "high",
+//             title: title,
+//             body: body
+//         }
+//     };
+// }
