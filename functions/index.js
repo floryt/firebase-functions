@@ -70,7 +70,7 @@ function obtainPermission(email, computerUID) {
     }).then(({token, userUID}) => {
         return sendNotification(token, userUID, computerUID);
     }).then((userUID) => {
-        def.resolve(true);
+        def.resolve({isPermitted: true});
     }).catch((error) => {
         console.log("Error in getting permission: ", error);
         def.reject();
