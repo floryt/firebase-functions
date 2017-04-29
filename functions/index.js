@@ -4,7 +4,7 @@ var functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const q = require('q');
 admin.initializeApp(functions.config().firebase);
-
+//TODO handle notification screen after time out
 exports.obtainIdentityVerification = functions.https.onRequest((req, res) => {
     console.log("Got: ", req.method);
     if (req.method !== 'POST') {
@@ -16,13 +16,13 @@ exports.obtainIdentityVerification = functions.https.onRequest((req, res) => {
     verifyIdentity(email).then(({isVerified, message}) => {
         let answer = {
             access: isVerified,
-            message: message || ''
+            message: message
         };
         answer = JSON.stringify(answer);
         console.log("Sent: ", answer);
         res.status(200).send(answer);
     })
-    .catch((error) => {
+    .catch(error => {
         console.log("Failed to verify user: ", error);
         res.status(200).send({
             access: false,
@@ -65,7 +65,7 @@ exports.connectivityCheck = functions.https.onRequest((req, res) => {
 function obtainPermission(email, computerUID) {
     let def = q.defer();
 
-    getUIDByEmail(email).then((userUID) => {
+    getUIDByEmail(email).then(userUID => {
         return getTokenByUID(userUID);
     }).then(({token, userUID}) => {
         return sendNotification(token, userUID, computerUID);
@@ -81,15 +81,15 @@ function obtainPermission(email, computerUID) {
 
 function verifyIdentity(email) {
     let def = q.defer();
-    getUIDByEmail(email).then((userUID) => {
+    getUIDByEmail(email).then(userUID => {
         return getTokenByUID(userUID);
     }).then(({token, userUID}) => {
         return sendIdentityVerificationRequest(token, userUID);
-    }).then((userUID) => {
+    }).then(userUID => {
         return obtainIdentityVerification(userUID);
     }).then(({identityVerification, message}) =>{
         def.resolve({isVerified: identityVerification, message: message});
-    }).catch((error) => {
+    }).catch(error => {
         console.log("Error in verification: ", error);
         def.reject();
     });
@@ -133,12 +133,12 @@ function sendNotification(token, userUID, computerUID) {
     createPermissionRequestPayload(userUID, computerUID).then(payload => {
         console.log("Sending: ", payload);
         admin.messaging().sendToDevice(token, payload)
-            .then(function (response) {
+            .then(response => {
                 // See the MessagingDevicesResponse reference documentation for the contents of response.
                 console.log("Successfully sent message:", response);
                 def.resolve(userUID);
             })
-            .catch(function (error) {
+            .catch(error => {
                 console.log("Error sending message:", error);
                 def.reject();
             });
@@ -171,11 +171,11 @@ function sendIdentityVerificationRequest(token, userUID){
     createVerificationPayload(userUID).then(payload => {
         console.log("Sending: ", payload);
         admin.messaging().sendToDevice(token, payload)
-            .then(function (response) {
+            .then(response => {
                 console.log("Successfully sent message:", response);
                 def.resolve(userUID);
             })
-            .catch(function (error) {
+            .catch(error => {
                 console.log("Error sending message:", error);
                 def.reject();
             });
@@ -185,8 +185,8 @@ function sendIdentityVerificationRequest(token, userUID){
 
 /**
  * Listens for change in the database (IdentityVerifications/{userUID}).
- * If there is no change in 'timeout' milliseconds,
- * listening stops and identityVerification = false, message = 'timeout reached'
+ * If there is no change in 2 minutes,
+ * listening stops and returned {identityVerification: false, message: 'timeout reached'}
  * @param {string} userUID
  * @return {JSON} {boolean} identityVerification, {string} massage
 **/
@@ -196,7 +196,7 @@ function obtainIdentityVerification(userUID){
     let timeout = 1000 * 120;
     let verificationRef = admin.database().ref("IdentityVerifications");
 
-    console.log(`Started watchdog for ${timeout} milliseconds, on ${verificationRef}`);
+    console.log(`Started watchdog on ${verificationRef}, for ${timeout} milliseconds`);
     let timeoutGuard;
     timeoutGuard = setTimeout(() => {
         console.log("Reached timeout");
@@ -211,14 +211,16 @@ function obtainIdentityVerification(userUID){
             console.log(`Got irrelevant trigger`);
             return;
         }
+        clearTimeout(timeoutGuard);
         if(identityFlag){
             def.resolve({identityVerification: true});
         }else{
             def.resolve({identityVerification: false, message: 'Rejected by user'});
         }
         console.log(`Finished handling database change, promise state is ${def.promise.inspect().state}`);
-        verificationRef.child(userUID).remove(); //Handle promise
-        clearTimeout(timeoutGuard);
+        verificationRef.child(userUID).remove().then(() => {
+            console.log('Verification cleared successfully');
+        });
     });
     return def.promise;
 }
