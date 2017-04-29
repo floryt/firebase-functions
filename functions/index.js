@@ -87,8 +87,8 @@ function verifyIdentity(email) {
         return sendIdentityVerificationRequest(token, userUID);
     }).then((userUID) => {
         return obtainIdentityVerification(userUID);
-    }).then((identityVerification) =>{
-        def.resolve({isVerified: identityVerification});
+    }).then(({identityVerification, message}) =>{
+        def.resolve({isVerified: identityVerification, message: message});
     }).catch((error) => {
         console.log("Error in verification: ", error);
         def.reject();
@@ -151,7 +151,6 @@ function createVerificationPayload(userUID) {
     let def = q.defer();
     admin.auth().getUser(userUID).then(user => {
         console.log("User: ", user.toJSON());
-        console.log(user.displayName, user.email, user.photoURL);
         let payload =
             {
                 data: {
@@ -184,9 +183,43 @@ function sendIdentityVerificationRequest(token, userUID){
     return def.promise;
 }
 
+/**
+ * Listens for change in the database (IdentityVerifications/{userUID}).
+ * If there is no change in 'timeout' milliseconds,
+ * listening stops and identityVerification = false, message = 'timeout reached'
+ * @param {string} userUID
+ * @return {JSON} {boolean} identityVerification, {string} massage
+**/
 function obtainIdentityVerification(userUID){
     let def = q.defer();
-    def.resolve(true);
+    console.log(`Waiting for verification from ${userUID}`);
+    let timeout = 1000 * 120;
+    let verificationRef = admin.database().ref("IdentityVerifications");
+
+    console.log(`Started watchdog for ${timeout} milliseconds, on ${verificationRef}`);
+    let timeoutGuard;
+    timeoutGuard = setTimeout(() => {
+        console.log("Reached timeout");
+        verificationRef.off(); //Remove listener
+        def.resolve({identityVerification: false, message: 'Reached timeout'});
+    }, timeout);
+
+    verificationRef.on('child_added', snapshot => {
+        let identityFlag = snapshot.val();
+        console.log(`Found value change: ${snapshot.key}:${identityFlag}`);
+        if (snapshot.key !== userUID){
+            console.log(`Got irrelevant trigger`);
+            return;
+        }
+        if(identityFlag){
+            def.resolve({identityVerification: true});
+        }else{
+            def.resolve({identityVerification: false, message: 'Rejected by user'});
+        }
+        console.log(`Finished handling database change, promise state is ${def.promise.inspect().state}`);
+        verificationRef.child(userUID).remove(); //Handle promise
+        clearTimeout(timeoutGuard);
+    });
     return def.promise;
 }
 
