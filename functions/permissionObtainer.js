@@ -7,15 +7,15 @@ const admin = helper.admin;
 const q = require('q');
 
 
-module.exports.obtainPermission= function obtainPermission(email, computerUID) {
+module.exports.obtainPermission= function obtainPermission(guestEmail, computerUID) {
     let def = q.defer();
 
-    helper.getUIDByEmail(email).then(userUID => { //TODO handle 'user was not found'
-        return helper.getTokenByUID(userUID);
+    helper.getOwnerByComputer(computerUID).then(ownerUID => { //TODO handle 'user was not found'
+        return helper.getTokenByUID(ownerUID); // get owner token
     }).then(({token, userUID}) => { //TODO handle 'token was not found'
-        return sendPermissionRequest(token, userUID);
-    }).then(({userUID, permissionUID}) => { //TODO handle 'failed to send message'
-        return obtainPermissionValue(userUID, permissionUID);
+        return sendPermissionRequest(token, guestEmail, computerUID, userUID); // send request to owner token, with computer data, and guest user data
+    }).then(({ownerUID, guestUID}) => { //TODO handle 'failed to send message'
+        return obtainPermissionValue(ownerUID, computerUID, guestUID);
     }).then(({isPermitted, message}) =>{ //TODO handle 'failed to obtain identity verification'
         def.resolve({isPermitted: isPermitted, message: message});
     }).catch(error => {
@@ -27,21 +27,47 @@ module.exports.obtainPermission= function obtainPermission(email, computerUID) {
     return def.promise;
 };
 
-function obtainPermissionValue(userUID, permissionUID) {
+function obtainPermissionValue(ownerUID, computerUID, guestUID) { //TODO if guest is owner resolve true.
+    let def = q.defer();
+    console.log(`Waiting for permission from ${ownerUID}, for ${guestUID}`);
+    let permissionRef = admin.database().ref("Permissions").child(computerUID);
+    let timeout = 1000 * 120;
 
+    console.log(`Started watchdog on ${permissionRef}, for ${timeout} milliseconds`);
+    let timeoutGuard;
+    timeoutGuard = setTimeout(() => {
+        console.log("Reached timeout");
+        permissionRef.off(); //Remove listener
+        def.resolve({isPermitted: false, message: 'Reached timeout'});
+    }, timeout);
+
+    permissionRef.on('child_added', snapshot => {
+        let identityFlag = snapshot.val();
+        console.log(`Found value: ${snapshot.key}:${identityFlag}`);
+        if (snapshot.key !== guestUID){
+            console.log(`Got irrelevant trigger`);
+            return;
+        }
+        clearTimeout(timeoutGuard);
+        def.resolve(identityFlag? {isPermitted: true} : {isPermitted: false, message: 'Identity was not verified'});
+        permissionRef.off();
+        permissionRef.child(guestUID).remove().then(() => {
+            console.log('Permission cleared successfully');
+        });
+    });
+    return def.promise;
 }
 
-function sendPermissionRequest(token, userUID, computerUID) {
+function sendPermissionRequest(token, guestEmail, computerUID, ownerUID) {
     console.log("Sending notification to: ", token);
     let def = q.defer();
 
-    createPermissionRequestPayload(userUID, computerUID).then(payload => {
+    createPermissionRequestPayload(guestEmail, computerUID).then(payload => {
         console.log("Sending: ", payload);
         admin.messaging().sendToDevice(token, payload)
             .then(response => {
-                // See the MessagingDevicesResponse reference documentation for the contents of response.
                 console.log("Successfully sent message:", response);
-                def.resolve(userUID);
+                def.resolve({ownerUID: ownerUID, guestUID: payload.data.guestUID});
             })
             .catch(error => {
                 console.log("Error sending message:", error);
@@ -52,24 +78,30 @@ function sendPermissionRequest(token, userUID, computerUID) {
     return def.promise;
 }
 
-function createPermissionRequestPayload(userUID, computerUID) {
-    console.log("Creating payload about user: ", userUID);
+function createPermissionRequestPayload(guestEmail, computerUID) {
+    console.log(`Creating payload: ${guestEmail} wants to sign in to ${computerUID}`);
     let def = q.defer();
-    admin.auth().getUser(userUID).then(user => {
-        console.log("User: ", user.toJSON());
-        console.log(user.displayName, user.email, user.photoURL);
-        let payload =
-            {
-                data: {
-                    priority: 'high',
-                    userEmail: user.email,
-                    userName: user.displayName,
-                    userPhotoUrl: user.photoURL,
-                    computer: computerUID,
-                }
-            };
-        console.log("Created payload: ", payload);
-        def.resolve(payload);
+    admin.auth().getUserByEmail(guestEmail).then(guest => {
+        console.log("Guest: ", guest.toJSON());
+        admin.database().ref('Computers').child(computerUID).on('value', snapshot =>{
+            let computer = snapshot.val();
+            console.log(`Found computer: ${computer}`);
+            let payload =
+                {
+                    data: {
+                        priority: 'high',
+                        messageType: 'permission',
+                        guestEmail: guest.email,
+                        guestName: guest.displayName,
+                        guestPhotoUrl: guest.photoURL,
+                        guestUID: guest.uid,
+                        computerUID: computerUID, // used for retrieving the permission
+                        computerName: computer.name
+                    }
+                };
+            console.log("Created payload: ", payload);
+            def.resolve(payload);
+        });
     }).catch(error => {
         console.log("Failed to create payload: ", error);
         def.reject();

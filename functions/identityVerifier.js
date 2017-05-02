@@ -91,6 +91,7 @@ function createVerificationPayload(userUID, verificationUID) {
             {
                 data: {
                     priority: 'high',
+                    messageType: 'identity',
                     userEmail: user.email,
                     userName: user.displayName,
                     userPhotoUrl: user.photoURL,

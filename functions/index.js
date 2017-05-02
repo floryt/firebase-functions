@@ -40,12 +40,12 @@ exports.obtainAdminPermission = functions.https.onRequest((req, res) => {
         return;
     }
     console.log(req.body);
-    const email = req.body.email;
+    const guestEmail = req.body.email;
     const computerUID = req.body.computerUID;
-    permissionObtainer.obtainPermission(email, computerUID).then(({isPermitted, message}) => {
+    permissionObtainer.obtainPermission(guestEmail , computerUID).then(({isPermitted, message}) => {
         let answer = {
             access: isPermitted,
-            message: message || ''
+            message: message
         };
         answer = JSON.stringify(answer);
         console.log("Sent: ", answer);

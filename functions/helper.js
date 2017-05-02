@@ -38,3 +38,19 @@ module.exports.getTokenByUID = function getTokenByUID(userUID) {
         });
     return def.promise;
 };
+
+module.exports.getOwnerByComputer = function getOwnerByComputer(computerUID) {
+    console.log("Getting owner of ", computerUID);
+    let def = q.defer();
+    let ownerUIDRef = admin.database().ref('Computers').child(computerUID).child('ownerUID');
+    ownerUIDRef.on('value', snapshot => {
+        console.log("Got computer owner: ", snapshot.val());
+        if(snapshot.val() === null){
+            def.reject();
+        }
+        else{
+            def.resolve(snapshot.val());
+        }
+    });
+    return def.promise;
+};
