@@ -49,7 +49,7 @@ function obtainPermissionValue(ownerUID, computerUID, guestUID) { //TODO if gues
             return;
         }
         clearTimeout(timeoutGuard);
-        def.resolve(identityFlag? {isPermitted: true} : {isPermitted: false, message: 'Identity was not verified'});
+        def.resolve(identityFlag? {isPermitted: true} : {isPermitted: false, message: 'Permission denied'});
         permissionRef.off();
         permissionRef.child(guestUID).remove().then(() => {
             console.log('Permission cleared successfully');
