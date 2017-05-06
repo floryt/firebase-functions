@@ -64,3 +64,7 @@ exports.connectivityCheck = functions.https.onRequest((req, res) => {
     res.status(200).send("OK");
 });
 
+exports.DLLmock = functions.https.onRequest((req, res) => {
+    console.log("Got: ", req.method);
+    res.status(200).send({access: true, message: "I love pizza!"});
+});
