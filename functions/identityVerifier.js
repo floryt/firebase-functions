@@ -22,7 +22,7 @@ module.exports.verifyIdentity =function verifyIdentity(email) {
     });
 
     return def.promise;
-}
+};
 
 /**
  * Listens for change in the database (IdentityVerifications/{verificationUID}/{userUID}).

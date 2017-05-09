@@ -3,6 +3,7 @@ require('@google-cloud/debug-agent').start({ allowExpressions: true });
 var helper = require('./helper');
 var identityVerifier = require('./identityVerifier');
 var permissionObtainer = require('./permissionObtainer');
+var computerRegistration = require('./computerRegistration');
 var functions = helper.functions;
 const q = require('q');
 
@@ -67,4 +68,27 @@ exports.connectivityCheck = functions.https.onRequest((req, res) => {
 exports.DLLmock = functions.https.onRequest((req, res) => {
     console.log("Got: ", req.method);
     res.status(200).send({access: true, message: "I love pizza!"});
+});
+
+exports.computerRegistration = functions.https.onRequest((req, res) => {
+    console.log("Got: ", req.method);
+    if (req.method !== 'POST') {
+        res.status(404).send('Method not supported');
+        return;
+    }
+    console.log(req.body);
+    const ownerEmail = req.body.email;
+    const computerName = req.body.ComputerName;
+    const computerUID = req.body.UID;
+    computerRegistration.createComputerData(ownerEmail, computerName).then(data =>{
+        return helper.admin.database().ref('Computers').child(computerUID).set(data);
+    }).then(snapshot => {
+        res.status(200).send('OK');
+    }).catch((error) => {
+        console.log("Failed to verify user: ", error);
+        res.status(200).send({
+            access: false,
+            message: `internal error: ${error.message}`
+        });
+    });
 });
