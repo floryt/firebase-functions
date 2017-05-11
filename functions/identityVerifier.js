@@ -12,33 +12,38 @@ module.exports.verifyIdentity = function verifyIdentity(email) {
 
     admin.auth().getUserByEmail(email)
         .then(user => {
-                return helper.getTokenByUID(user.uid);
-            },
-            reason => {
-                console.error("Failed to get user by email:", reason);
-                def.resolve({isVerified: false, message: 'This user does not exists.'});
-            })
+            return helper.getTokenByUID(user.uid);
+        },
+        reason => {
+            console.error("Failed to get user by email:", reason);
+            def.resolve({isVerified: false, message: 'This user does not exists.'});
+        })
+
         // getTokenByUID
         .then(({token, userUID}) => {
-                return sendIdentityVerificationRequest(token, userUID);
-            },
-            reason => {
-                def.resolve({
-                    isVerified: false,
-                    message: 'This user is not connected to the app. Please connect and try again.'
-                });
-            })
+            return sendIdentityVerificationRequest(token, userUID);
+        },
+        reason => {
+            def.resolve({
+                isVerified: false,
+                message: 'This user is not connected to the app. Please connect and try again.'
+            });
+        })
+
         // sendIdentityVerificationRequest
         .then(({userUID, verificationUID}) => {
             return obtainIdentityVerification(userUID, verificationUID);
-        }, reason => {
+        },
+        reason => {
             def.resolve({isVerified: true, message: 'User can not get verification message. Please try again.'});
         })
+
         // obtainIdentityVerification
         .then(({identityVerification, message}) => {
             def.resolve({isVerified: identityVerification, message: message});
         })
-        //Unhandled rejection or exception
+
+        // Unhandled rejection or exception
         .catch(error => {
             console.error('Error in verification:', error);
             def.reject();

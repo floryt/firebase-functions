@@ -19,7 +19,7 @@ module.exports.getTokenByUID = function getTokenByUID(userUID) {
                 console.error('User token does not exit.');
                 def.reject();
             } else {
-                console.error('Got token:', snapshot.val());
+                console.log('Got token:', snapshot.val());
                 def.resolve({token: snapshot.val(), userUID: userUID});
             }
         });
@@ -31,11 +31,12 @@ module.exports.getOwnerByComputer = function getOwnerByComputer(computerUID) {
     let def = q.defer();
     let ownerUIDRef = admin.database().ref('Computers').child(computerUID).child('ownerUID');
     ownerUIDRef.on('value', snapshot => {
-        console.log('Got computer owner:', snapshot.val());
         if (snapshot.val() === null) {
+            console.error('Computer is not registered.');
             def.reject();
         }
         else {
+            console.log('Got computer owner:', snapshot.val());
             def.resolve(snapshot.val());
         }
     });
