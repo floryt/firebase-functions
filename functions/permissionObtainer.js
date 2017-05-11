@@ -10,17 +10,18 @@ const q = require('q');
 module.exports.obtainPermission= function obtainPermission(guestEmail, computerUID) {
     let def = q.defer();
 
-    helper.getOwnerByComputer(computerUID).then(ownerUID => { //TODO handle 'user was not found'
-        return helper.getTokenByUID(ownerUID); // get owner token
+    helper.getOwnerByComputer(computerUID)
+        .then(ownerUID => { //TODO handle 'user was not found'
+            return helper.getTokenByUID(ownerUID);
     }).then(({token, userUID}) => { //TODO handle 'token was not found'
-        return sendPermissionRequest(token, guestEmail, computerUID, userUID); // send request to owner token, with computer data, and guest user data
+            return sendPermissionRequest(token, guestEmail, computerUID, userUID);
     }).then(({ownerUID, guestUID}) => { //TODO handle 'failed to send message'
-        return obtainPermissionValue(ownerUID, computerUID, guestUID);
+            return obtainPermissionValue(ownerUID, computerUID, guestUID);
     }).then(({isPermitted, message}) =>{ //TODO handle 'failed to obtain identity verification'
-        def.resolve({isPermitted: isPermitted, message: message});
+            def.resolve({isPermitted: isPermitted, message: message});
     }).catch(error => {
-        console.log("Error in verification: ", error);
-        def.reject();
+            console.error('Error in verification:', error);
+            def.reject();
     });
 
 
@@ -30,13 +31,13 @@ module.exports.obtainPermission= function obtainPermission(guestEmail, computerU
 function obtainPermissionValue(ownerUID, computerUID, guestUID) { //TODO if guest is owner resolve true.
     let def = q.defer();
     console.log(`Waiting for permission from ${ownerUID}, for ${guestUID}`);
-    let permissionRef = admin.database().ref("Permissions").child(computerUID);
+    let permissionRef = admin.database().ref("Permissions").child(computerUID); //TODO change to  permission id, double request can accrue on computer
     let timeout = 1000 * 120;
 
     console.log(`Started watchdog on ${permissionRef}, for ${timeout} milliseconds`);
     let timeoutGuard;
     timeoutGuard = setTimeout(() => {
-        console.log("Reached timeout");
+        console.warn('Reached timeout');
         permissionRef.off(); //Remove listener
         def.resolve({isPermitted: false, message: 'Reached timeout'});
     }, timeout);
@@ -59,18 +60,18 @@ function obtainPermissionValue(ownerUID, computerUID, guestUID) { //TODO if gues
 }
 
 function sendPermissionRequest(token, guestEmail, computerUID, ownerUID) {
-    console.log("Sending notification to: ", token);
+    console.log('Sending notification to:', token);
     let def = q.defer();
 
     createPermissionRequestPayload(guestEmail, computerUID).then(payload => {
-        console.log("Sending: ", payload);
+        console.log('Sending:', payload);
         admin.messaging().sendToDevice(token, payload)
             .then(response => {
-                console.log("Successfully sent message:", response);
+                console.log('Successfully sent message:', response);
                 def.resolve({ownerUID: ownerUID, guestUID: payload.data.guestUID});
             })
             .catch(error => {
-                console.log("Error sending message:", error);
+                console.error('Error sending message:', error);
                 def.reject();
             });
     });
@@ -82,7 +83,7 @@ function createPermissionRequestPayload(guestEmail, computerUID) {
     console.log(`Creating payload: ${guestEmail} wants to sign in to ${computerUID}`);
     let def = q.defer();
     admin.auth().getUserByEmail(guestEmail).then(guest => {
-        console.log("Guest: ", guest.toJSON());
+        console.log('Guest:', guest.toJSON());
         admin.database().ref('Computers').child(computerUID).on('value', snapshot =>{
             let computer = snapshot.val();
             console.log(`Found computer: ${computer}`);
@@ -99,11 +100,11 @@ function createPermissionRequestPayload(guestEmail, computerUID) {
                         computerName: computer.name
                     }
                 };
-            console.log("Created payload: ", payload);
+            console.log('Created payload:', payload);
             def.resolve(payload);
         });
     }).catch(error => {
-        console.log("Failed to create payload: ", error);
+        console.error('Failed to create payload:', error);
         def.reject();
     });
     return def.promise;

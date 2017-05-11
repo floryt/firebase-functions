@@ -6,20 +6,43 @@ var helper = require('./helper');
 const admin = helper.admin;
 const q = require('q');
 
-module.exports.verifyIdentity =function verifyIdentity(email) {
+
+module.exports.verifyIdentity = function verifyIdentity(email) {
     let def = q.defer();
-    helper.getUIDByEmail(email).then(userUID => { //TODO handle 'user was not found'
-        return helper.getTokenByUID(userUID);
-    }).then(({token, userUID}) => { //TODO handle 'token was not found'
-        return sendIdentityVerificationRequest(token, userUID);
-    }).then(({userUID, verificationUID}) => { //TODO handle 'failed to send message'
-        return obtainIdentityVerification(userUID, verificationUID);
-    }).then(({identityVerification, message}) =>{ //TODO handle 'failed to obtain identity verification'
-        def.resolve({isVerified: identityVerification, message: message});
-    }).catch(error => {
-        console.log("Error in verification: ", error);
-        def.reject();
-    });
+
+    admin.auth().getUserByEmail(email)
+        .then(user => {
+                return helper.getTokenByUID(user.uid);
+            },
+            reason => {
+                console.error("Failed to get user by email:", reason);
+                def.resolve({isVerified: false, message: 'This user does not exists.'});
+            })
+        // getTokenByUID
+        .then(({token, userUID}) => {
+                return sendIdentityVerificationRequest(token, userUID);
+            },
+            reason => {
+                def.resolve({
+                    isVerified: false,
+                    message: 'This user is not connected to the app. Please connect and try again.'
+                });
+            })
+        // sendIdentityVerificationRequest
+        .then(({userUID, verificationUID}) => {
+            return obtainIdentityVerification(userUID, verificationUID);
+        }, reason => {
+            def.resolve({isVerified: true, message: 'User can not get verification message. Please try again.'});
+        })
+        // obtainIdentityVerification
+        .then(({identityVerification, message}) => {
+            def.resolve({isVerified: identityVerification, message: message});
+        })
+        //Unhandled rejection or exception
+        .catch(error => {
+            console.error('Error in verification:', error);
+            def.reject();
+        });
 
     return def.promise;
 };
@@ -32,7 +55,7 @@ module.exports.verifyIdentity =function verifyIdentity(email) {
  * @param {string} verificationUID
  * @return {JSON} {boolean} identityVerification, {string} massage
  **/
-function obtainIdentityVerification(userUID, verificationUID){
+function obtainIdentityVerification(userUID, verificationUID) {
     let def = q.defer();
     console.log(`Waiting for verification from ${userUID}`);
     let timeout = 1000 * 120;
@@ -41,20 +64,26 @@ function obtainIdentityVerification(userUID, verificationUID){
     console.log(`Started watchdog on ${verificationRef}, for ${timeout} milliseconds`);
     let timeoutGuard;
     timeoutGuard = setTimeout(() => {
-        console.log("Reached timeout");
+        console.log(`User identity was not verified in a ${timeout / 1000} time frame.`);
         verificationRef.off(); //Remove listener
-        def.resolve({identityVerification: false, message: 'Reached timeout'});
+        def.resolve({
+            identityVerification: false,
+            message: `User identity was not verified in a ${timeout / 1000} seconds time frame.`
+        });
     }, timeout);
 
     verificationRef.on('child_added', snapshot => {
         let identityFlag = snapshot.val();
         console.log(`Found value: ${snapshot.key}:${identityFlag}`);
-        if (snapshot.key !== userUID){
+        if (snapshot.key !== userUID) {
             console.log(`Got irrelevant trigger`);
             return;
         }
         clearTimeout(timeoutGuard);
-        def.resolve(identityFlag? {identityVerification: true} : {identityVerification: false, message: 'Identity was not verified'});
+        def.resolve(identityFlag ? {identityVerification: true} : {
+            identityVerification: false,
+            message: 'Identity was not verified'
+        });
         console.log(`Finished handling database change, promise state is ${def.promise.inspect().state}`);
         verificationRef.off();
         verificationRef.child(userUID).remove().then(() => {
@@ -64,21 +93,24 @@ function obtainIdentityVerification(userUID, verificationUID){
     return def.promise;
 }
 
-function sendIdentityVerificationRequest(token, userUID){
-    console.log("Sending verification request to: ", token);
+function sendIdentityVerificationRequest(token, userUID) {
+    console.log('Sending verification request to:', token);
     let def = q.defer();
     let verificationUID = admin.database().ref("IdentityVerifications").push().key;
     createVerificationPayload(userUID, verificationUID).then(payload => {
-        console.log("Sending: ", payload);
+        console.log('Sending:', payload);
         admin.messaging().sendToDevice(token, payload)
             .then(response => {
-                console.log("Successfully sent message:", response);
+                console.log('Successfully sent message:', response);
                 def.resolve({userUID: userUID, verificationUID: verificationUID});
             })
             .catch(error => {
-                console.log("Error sending message:", error);
+                console.error("Error sending message:", error);
                 def.reject();
             });
+    }).catch(error => {
+        console.error("Error creating verification payload:", error);
+        def.reject();
     });
     return def.promise;
 }
@@ -86,7 +118,7 @@ function sendIdentityVerificationRequest(token, userUID){
 function createVerificationPayload(userUID, verificationUID) {
     let def = q.defer();
     admin.auth().getUser(userUID).then(user => {
-        console.log("User: ", user.toJSON());
+        console.log('Creating payload about user:', user.toJSON());
         let payload =
             {
                 data: {

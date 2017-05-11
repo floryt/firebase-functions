@@ -1,4 +1,4 @@
-require('@google-cloud/debug-agent').start({ allowExpressions: true });
+require('@google-cloud/debug-agent').start({allowExpressions: true});
 
 var helper = require('./helper');
 var identityVerifier = require('./identityVerifier');
@@ -7,52 +7,50 @@ var computerRegistration = require('./computerRegistration');
 var functions = helper.functions;
 const q = require('q');
 
-//TODO handle notification screen after time out
-exports.obtainIdentityVerification = functions.https.onRequest((req, res) => {
-    console.log("Got: ", req.method);
+exports.obtain_identity_verification = functions.https.onRequest((req, res) => {
+    console.log(`Got method: ${req.method}, with body: ${req.body}`);
     if (req.method !== 'POST') {
         res.status(404).send('Method not supported');
         return;
     }
-    console.log(req.body);
     const email = req.body.email;
-    identityVerifier.verifyIdentity(email).then(({isVerified, message}) => {
-        let answer = {
-            access: isVerified,
-            message: message
-        };
-        answer = JSON.stringify(answer);
-        console.log("Sent: ", answer);
-        res.status(200).send(answer);
-    })
-    .catch(error => {
-        console.log("Failed to verify user: ", error);
-        res.status(200).send({
-            access: false,
-            message: "internal error"
+    identityVerifier.verifyIdentity(email)
+        .then(({isVerified, message}) => {
+            let answer = {
+                access: isVerified,
+                message: message
+            };
+            answer = JSON.stringify(answer);
+            console.log('Sent:', answer);
+            res.status(200).send(answer);
+        })
+        .catch(error => {
+            console.error('Failed to verify user:', error);
+            res.status(200).send({
+                access: false,
+                message: "internal error"
+            });
         });
-    });
 });
 
-exports.obtainAdminPermission = functions.https.onRequest((req, res) => {
-    console.log("Got: ", req.method);
+exports.obtain_admin_permission = functions.https.onRequest((req, res) => {
+    console.log(`Got method: ${req.method}, with body: ${req.body}`);
     if (req.method !== 'POST') {
         res.status(404).send('Method not supported');
         return;
     }
-    console.log(req.body);
     const guestEmail = req.body.email;
     const computerUID = req.body.computerUID;
-    permissionObtainer.obtainPermission(guestEmail , computerUID).then(({isPermitted, message}) => {
+    permissionObtainer.obtainPermission(guestEmail, computerUID).then(({isPermitted, message}) => {
         let answer = {
             access: isPermitted,
             message: message
         };
         answer = JSON.stringify(answer);
-        console.log("Sent: ", answer);
+        console.log('Sent:', answer);
         res.status(200).send(answer);
     }).catch((error) => {
-        console.log("Failed to verify user: ", error);
+        console.error('Failed to get permission from admin:', error);
         res.status(200).send({
             access: false,
             message: `internal error: ${error.message}`
@@ -60,18 +58,18 @@ exports.obtainAdminPermission = functions.https.onRequest((req, res) => {
     });
 });
 
-exports.connectivityCheck = functions.https.onRequest((req, res) => {
-    console.log("Got: ", req.method);
+exports.connectivity_check = functions.https.onRequest((req, res) => {
+    console.log('Got:', req.method);
     res.status(200).send("OK");
 });
 
-exports.DLLmock = functions.https.onRequest((req, res) => {
-    console.log("Got: ", req.method);
+exports.dll_mock = functions.https.onRequest((req, res) => {
+    console.log('Got:', req.method);
     res.status(200).send({access: true, message: "I love pizza!"});
 });
 
-exports.computerRegistration = functions.https.onRequest((req, res) => {
-    console.log("Got: ", req.method);
+exports.computer_registration = functions.https.onRequest((req, res) => {
+    console.log('Got:', req.method);
     if (req.method !== 'POST') {
         res.status(404).send('Method not supported');
         return;
@@ -80,12 +78,12 @@ exports.computerRegistration = functions.https.onRequest((req, res) => {
     const ownerEmail = req.body.email;
     const computerName = req.body.ComputerName;
     const computerUID = req.body.UID;
-    computerRegistration.createComputerData(ownerEmail, computerName).then(data =>{
+    computerRegistration.createComputerData(ownerEmail, computerName).then(data => {
         return helper.admin.database().ref('Computers').child(computerUID).set(data);
-    }).then(snapshot => {
+    }).then(() => {
         res.status(200).send('OK');
     }).catch((error) => {
-        console.log("Failed to verify user: ", error);
+        console.log('Failed to register computer:', error);
         res.status(200).send({
             access: false,
             message: `internal error: ${error.message}`
