@@ -89,7 +89,6 @@ function obtainIdentityVerification(userUid, verificationUid) {
             identityVerification: false,
             message: 'Identity was not verified'
         });
-        console.log(`Finished handling database change, promise state is ${def.promise.inspect().state}`);
         verificationRef.off();
         verificationRef.child(userUid).remove().then(() => {
             console.log('Verification cleared successfully');
@@ -123,7 +122,7 @@ function sendIdentityVerificationRequest(token, userUid) {
 function createVerificationPayload(userUid, verificationUid) {
     let def = q.defer();
     admin.auth().getUser(userUid).then(user => {
-        console.log('Creating payload about user:', user.toJSON());
+        console.log('Creating payload about user:', JSON.stringify(user));
         let payload =
             {
                 data: {

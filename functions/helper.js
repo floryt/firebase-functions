@@ -33,7 +33,7 @@ module.exports.getOwnerByComputer = function getOwnerByComputer(computerUid) {
     ownerUidRef.on('value', snapshot => {
         if (snapshot.val() === null) {
             console.error('Computer is not registered.');
-            def.reject();
+            def.reject('Computer is not registered.');
         }
         else {
             console.log('Got computer owner:', snapshot.val());

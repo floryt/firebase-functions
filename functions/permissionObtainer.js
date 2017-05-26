@@ -15,7 +15,7 @@ module.exports.obtainPermission = function obtainPermission(guestEmail, computer
             return helper.getTokenByUid(ownerUid);
         },
         reason => {
-            def.resolve({isVerified: false, message: 'Computer is not registered.'});
+            def.resolve({isPermitted: false, message: reason});
         })
 
         // getTokenByUid
@@ -24,7 +24,7 @@ module.exports.obtainPermission = function obtainPermission(guestEmail, computer
         },
         reason => {
             def.resolve({
-                isVerified: false,
+                isPermitted: false,
                 message: 'The computer owner is not available currently. Please try again later.'
             });
         })
@@ -34,7 +34,7 @@ module.exports.obtainPermission = function obtainPermission(guestEmail, computer
             return obtainPermissionValue(ownerUid, permissionUid, computerUid, guestUid);
         },
         reason => {
-            def.resolve({isVerified: true, message: 'User can not get verification message. Please try again.'});
+            def.resolve({isPermitted: true, message: reason});
         })
 
         // obtainPermissionValue
@@ -44,7 +44,7 @@ module.exports.obtainPermission = function obtainPermission(guestEmail, computer
 
         // Unhandled rejection or exception
         .catch(error => {
-            console.error('Error in verification:', error);
+            console.error('Error in obtaining permission:', error);
             def.reject();
         });
 
@@ -103,7 +103,7 @@ function sendPermissionRequest(token, guestEmail, computerUid, ownerUid) {
             })
             .catch(error => {
                 console.error('Error sending message:', error);
-                def.reject();
+                def.reject('Failed to send request. Please try again.');
             });
     });
 
