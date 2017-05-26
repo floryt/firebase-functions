@@ -12,16 +12,16 @@ module.exports.verifyIdentity = function verifyIdentity(email) {
 
     admin.auth().getUserByEmail(email)
         .then(user => {
-            return helper.getTokenByUID(user.uid);
+            return helper.getTokenByUid(user.uid);
         },
         reason => {
             console.error("Failed to get user by email:", reason);
             def.resolve({isVerified: false, message: 'This user does not exists.'});
         })
 
-        // getTokenByUID
-        .then(({token, userUID}) => {
-            return sendIdentityVerificationRequest(token, userUID);
+        // getTokenByUid
+        .then(({token, userUid}) => {
+            return sendIdentityVerificationRequest(token, userUid);
         },
         reason => {
             def.resolve({
@@ -31,8 +31,8 @@ module.exports.verifyIdentity = function verifyIdentity(email) {
         })
 
         // sendIdentityVerificationRequest
-        .then(({userUID, verificationUID}) => {
-            return obtainIdentityVerification(userUID, verificationUID);
+        .then(({userUid, verificationUid}) => {
+            return obtainIdentityVerification(userUid, verificationUid);
         },
         reason => {
             def.resolve({isVerified: true, message: 'User can not get verification message. Please try again.'});
@@ -53,18 +53,18 @@ module.exports.verifyIdentity = function verifyIdentity(email) {
 };
 
 /**
- * Listens for change in the database (IdentityVerifications/{verificationUID}/{userUID}).
+ * Listens for change in the database (IdentityVerifications/{verificationUid}/{userUid}).
  * If there is no change in 2 minutes,
  * listening stops and returned {identityVerification: false, message: 'timeout reached'}
- * @param {string} userUID
- * @param {string} verificationUID
+ * @param {string} userUid
+ * @param {string} verificationUid
  * @return {JSON} {boolean} identityVerification, {string} massage
  **/
-function obtainIdentityVerification(userUID, verificationUID) {
+function obtainIdentityVerification(userUid, verificationUid) {
     let def = q.defer();
-    console.log(`Waiting for verification from ${userUID}`);
+    console.log(`Waiting for verification from ${userUid}`);
     let timeout = 1000 * 120;
-    let verificationRef = admin.database().ref("IdentityVerifications").child(verificationUID);
+    let verificationRef = admin.database().ref("IdentityVerifications").child(verificationUid);
 
     console.log(`Started watchdog on ${verificationRef}, for ${timeout} milliseconds`);
     let timeoutGuard;
@@ -80,7 +80,7 @@ function obtainIdentityVerification(userUID, verificationUID) {
     verificationRef.on('child_added', snapshot => {
         let identityFlag = snapshot.val();
         console.log(`Found value: ${snapshot.key}:${identityFlag}`);
-        if (snapshot.key !== userUID) {
+        if (snapshot.key !== userUid) {
             console.log(`Got irrelevant trigger`);
             return;
         }
@@ -91,23 +91,23 @@ function obtainIdentityVerification(userUID, verificationUID) {
         });
         console.log(`Finished handling database change, promise state is ${def.promise.inspect().state}`);
         verificationRef.off();
-        verificationRef.child(userUID).remove().then(() => {
+        verificationRef.child(userUid).remove().then(() => {
             console.log('Verification cleared successfully');
         });
     });
     return def.promise;
 }
 
-function sendIdentityVerificationRequest(token, userUID) {
+function sendIdentityVerificationRequest(token, userUid) {
     console.log('Sending verification request to:', token);
     let def = q.defer();
-    let verificationUID = admin.database().ref("IdentityVerifications").push().key;
-    createVerificationPayload(userUID, verificationUID).then(payload => {
+    let verificationUid = admin.database().ref("IdentityVerifications").push().key;
+    createVerificationPayload(userUid, verificationUid).then(payload => {
         console.log('Sending:', payload);
         admin.messaging().sendToDevice(token, payload)
             .then(response => {
                 console.log('Successfully sent message:', response);
-                def.resolve({userUID: userUID, verificationUID: verificationUID});
+                def.resolve({userUid: userUid, verificationUid: verificationUid});
             })
             .catch(error => {
                 console.error("Error sending message:", error);
@@ -120,9 +120,9 @@ function sendIdentityVerificationRequest(token, userUID) {
     return def.promise;
 }
 
-function createVerificationPayload(userUID, verificationUID) {
+function createVerificationPayload(userUid, verificationUid) {
     let def = q.defer();
-    admin.auth().getUser(userUID).then(user => {
+    admin.auth().getUser(userUid).then(user => {
         console.log('Creating payload about user:', user.toJSON());
         let payload =
             {
@@ -132,7 +132,7 @@ function createVerificationPayload(userUID, verificationUID) {
                     userEmail: user.email,
                     userName: user.displayName,
                     userPhotoUrl: user.photoURL,
-                    verificationUID: verificationUID
+                    verificationUid: verificationUid
                 }
             };
         def.resolve(payload);

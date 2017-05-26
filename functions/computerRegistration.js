@@ -11,7 +11,7 @@ module.exports.createComputerData = function createComputerData(ownerEmail, comp
     admin.auth().getUserByEmail(ownerEmail).then(owner => {
         def.resolve({
             name: computerName,
-            ownerUID: owner.uid,
+            ownerUid: owner.uid,
             users: {
                 0: owner.displayName
             }

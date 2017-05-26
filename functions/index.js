@@ -8,7 +8,7 @@ var functions = helper.functions;
 const q = require('q');
 
 exports.obtain_identity_verification = functions.https.onRequest((req, res) => {
-    console.log(`Got method: ${req.method}, with body: ${req.body}`);
+    console.log(`Got method: ${req.method}, with body: ${JSON.stringify(req.body)}`);
     if (req.method !== 'POST') {
         res.status(404).send('Method not supported');
         return;
@@ -34,14 +34,14 @@ exports.obtain_identity_verification = functions.https.onRequest((req, res) => {
 });
 
 exports.obtain_admin_permission = functions.https.onRequest((req, res) => {
-    console.log(`Got method: ${req.method}, with body: ${req.body}`);
+    console.log(`Got method: ${req.method}, with body: ${JSON.stringify(req.body)}`);
     if (req.method !== 'POST') {
         res.status(404).send('Method not supported');
         return;
     }
     const guestEmail = req.body.email;
-    const computerUID = req.body.computerUID;
-    permissionObtainer.obtainPermission(guestEmail, computerUID).then(({isPermitted, message}) => {
+    const computerUid = req.body.computerUid;
+    permissionObtainer.obtainPermission(guestEmail, computerUid).then(({isPermitted, message}) => {
         let answer = {
             access: isPermitted,
             message: message
@@ -76,10 +76,10 @@ exports.computer_registration = functions.https.onRequest((req, res) => {
     }
     console.log(req.body);
     const ownerEmail = req.body.email;
-    const computerName = req.body.ComputerName;
-    const computerUID = req.body.UID;
+    const computerName = req.body.computerName;
+    const computerUid = req.body.Uid;
     computerRegistration.createComputerData(ownerEmail, computerName).then(data => {
-        return helper.admin.database().ref('Computers').child(computerUID).set(data);
+        return helper.admin.database().ref('Computers').child(computerUid).set(data);
     }).then(() => {
         res.status(200).send('OK');
     }).catch((error) => {

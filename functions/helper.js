@@ -10,27 +10,27 @@ admin.initializeApp(functions.config().firebase);
 module.exports.functions = functions;
 module.exports.admin = admin;
 
-module.exports.getTokenByUID = function getTokenByUID(userUID) {
-    console.log('Getting token of', userUID);
+module.exports.getTokenByUid = function getTokenByUid(userUid) {
+    console.log('Getting token of', userUid);
     let def = q.defer();
-    admin.database().ref('Users').child(userUID).child('deviceToken')
+    admin.database().ref('Users').child(userUid).child('deviceToken')
         .on('value', snapshot => {
             if (snapshot.val() === null) {
                 console.error('User token does not exit.');
                 def.reject();
             } else {
                 console.log('Got token:', snapshot.val());
-                def.resolve({token: snapshot.val(), userUID: userUID});
+                def.resolve({token: snapshot.val(), userUid: userUid});
             }
         });
     return def.promise;
 };
 
-module.exports.getOwnerByComputer = function getOwnerByComputer(computerUID) {
-    console.log('Getting owner of', computerUID);
+module.exports.getOwnerByComputer = function getOwnerByComputer(computerUid) {
+    console.log('Getting owner of', computerUid);
     let def = q.defer();
-    let ownerUIDRef = admin.database().ref('Computers').child(computerUID).child('ownerUID');
-    ownerUIDRef.on('value', snapshot => {
+    let ownerUidRef = admin.database().ref('Computers').child(computerUid).child('ownerUid');
+    ownerUidRef.on('value', snapshot => {
         if (snapshot.val() === null) {
             console.error('Computer is not registered.');
             def.reject();

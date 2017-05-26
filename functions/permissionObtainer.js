@@ -7,20 +7,20 @@ const admin = helper.admin;
 const q = require('q');
 
 
-module.exports.obtainPermission = function obtainPermission(guestEmail, computerUID) {
+module.exports.obtainPermission = function obtainPermission(guestEmail, computerUid) {
     let def = q.defer();
 
-    helper.getOwnerByComputer(computerUID)
-        .then(ownerUID => {
-            return helper.getTokenByUID(ownerUID);
+    helper.getOwnerByComputer(computerUid)
+        .then(ownerUid => {
+            return helper.getTokenByUid(ownerUid);
         },
         reason => {
             def.resolve({isVerified: false, message: 'Computer is not registered.'});
         })
 
-        // getTokenByUID
-        .then(({token, userUID}) => {
-            return sendPermissionRequest(token, guestEmail, computerUID, userUID);
+        // getTokenByUid
+        .then(({token, userUid}) => {
+            return sendPermissionRequest(token, guestEmail, computerUid, userUid);
         },
         reason => {
             def.resolve({
@@ -30,8 +30,8 @@ module.exports.obtainPermission = function obtainPermission(guestEmail, computer
         })
 
         // sendPermissionRequest
-        .then(({ownerUID, guestUID, permissionUID}) => {
-            return obtainPermissionValue(ownerUID, permissionUID, computerUID, guestUID);
+        .then(({ownerUid, guestUid, permissionUid}) => {
+            return obtainPermissionValue(ownerUid, permissionUid, computerUid, guestUid);
         },
         reason => {
             def.resolve({isVerified: true, message: 'User can not get verification message. Please try again.'});
@@ -52,16 +52,16 @@ module.exports.obtainPermission = function obtainPermission(guestEmail, computer
     return def.promise;
 };
 
-function obtainPermissionValue(ownerUID, permissionUID, computerUID, guestUID) {
+function obtainPermissionValue(ownerUid, permissionUid, computerUid, guestUid) {
     let def = q.defer();
-    console.log(`Waiting for permission from ${ownerUID}, for ${guestUID}`);
+    console.log(`Waiting for permission from ${ownerUid}, for ${guestUid}`);
 
-    if (ownerUID === guestUID) {  // if guest is owner permit immediately
+    if (ownerUid === guestUid) {  // if guest is owner permit immediately
         def.resolve({isPermitted: true});
         return def.promise;
     }
 
-    let permissionRef = admin.database().ref("Permissions").child(permissionUID).child(computerUID);
+    let permissionRef = admin.database().ref("Permissions").child(permissionUid).child(computerUid);
     let timeout = 1000 * 120;
 
     console.log(`Started watchdog on ${permissionRef}, for ${timeout} milliseconds`);
@@ -75,31 +75,31 @@ function obtainPermissionValue(ownerUID, permissionUID, computerUID, guestUID) {
     permissionRef.on('child_added', snapshot => {
         let identityFlag = snapshot.val();
         console.log(`Found value: ${snapshot.key}:${identityFlag}`);
-        if (snapshot.key !== guestUID) {
+        if (snapshot.key !== guestUid) {
             console.log(`Got irrelevant trigger`);
             return;
         }
         clearTimeout(timeoutGuard);
         def.resolve(identityFlag ? {isPermitted: true} : {isPermitted: false, message: 'Permission denied by owner'});
         permissionRef.off();
-        permissionRef.child(guestUID).remove().then(() => {
+        permissionRef.child(guestUid).remove().then(() => {
             console.log('Permission cleared successfully');
         });
     });
     return def.promise;
 }
 
-function sendPermissionRequest(token, guestEmail, computerUID, ownerUID) {
+function sendPermissionRequest(token, guestEmail, computerUid, ownerUid) {
     console.log('Sending notification to:', token);
     let def = q.defer();
-    let permissionUID = admin.database().ref("Permissions").push().key;
+    let permissionUid = admin.database().ref("Permissions").push().key;
 
-    createPermissionRequestPayload(guestEmail, computerUID, permissionUID).then(payload => {
+    createPermissionRequestPayload(guestEmail, computerUid, permissionUid).then(payload => {
         console.log('Sending:', payload);
         admin.messaging().sendToDevice(token, payload)
             .then(response => {
                 console.log('Successfully sent message:', response);
-                def.resolve({ownerUID: ownerUID, guestUID: payload.data.guestUID, permissionUID: permissionUID});
+                def.resolve({ownerUid: ownerUid, guestUid: payload.data.guestUid, permissionUid: permissionUid});
             })
             .catch(error => {
                 console.error('Error sending message:', error);
@@ -110,14 +110,14 @@ function sendPermissionRequest(token, guestEmail, computerUID, ownerUID) {
     return def.promise;
 }
 
-function createPermissionRequestPayload(guestEmail, computerUID, permissionUID) {
-    console.log(`Creating payload: ${guestEmail} wants to sign in to ${computerUID}`);
+function createPermissionRequestPayload(guestEmail, computerUid, permissionUid) {
+    console.log(`Creating payload: ${guestEmail} wants to sign in to ${computerUid}`);
     let def = q.defer();
     admin.auth().getUserByEmail(guestEmail).then(guest => {
         console.log('Guest:', guest.toJSON());
-        admin.database().ref('Computers').child(computerUID).on('value', snapshot => {
+        admin.database().ref('Computers').child(computerUid).on('value', snapshot => {
             let computer = snapshot.val();
-            console.log(`Found computer: ${computer}`);
+            console.log(`Found computer: ${JSON.stringify(computer)}`);
             let payload =
                 {
                     data: {
@@ -126,10 +126,10 @@ function createPermissionRequestPayload(guestEmail, computerUID, permissionUID) 
                         guestEmail: guest.email,
                         guestName: guest.displayName,
                         guestPhotoUrl: guest.photoURL,
-                        guestUID: guest.uid,
-                        computerUID: computerUID,
+                        guestUid: guest.uid,
+                        computerUid: computerUid,
                         computerName: computer.name, //unnecessary
-                        permissionUID: permissionUID
+                        permissionUid: permissionUid
                     }
                 };
             console.log('Created payload:', payload);
