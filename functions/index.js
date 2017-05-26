@@ -1,5 +1,3 @@
-require('@google-cloud/debug-agent').start({allowExpressions: true});
-
 var helper = require('./helper');
 var identityVerifier = require('./identityVerifier');
 var permissionObtainer = require('./permissionObtainer');
