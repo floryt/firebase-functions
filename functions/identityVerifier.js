@@ -9,10 +9,12 @@ const q = require('q');
 
 module.exports.verifyIdentity = function verifyIdentity(email) {
     let def = q.defer();
+    let userUid;
 
     admin.auth().getUserByEmail(email)
         .then(user => {
-            return helper.getTokenByUid(user.uid);
+            userUid = user.uid;
+            return helper.getTokenByUid(userUid);
         },
         reason => {
             console.error("Failed to get user by email:", reason);
@@ -20,7 +22,7 @@ module.exports.verifyIdentity = function verifyIdentity(email) {
         })
 
         // getTokenByUid
-        .then(({token, userUid}) => {
+        .then(token => {
             return sendIdentityVerificationRequest(token, userUid);
         },
         reason => {
@@ -31,7 +33,7 @@ module.exports.verifyIdentity = function verifyIdentity(email) {
         })
 
         // sendIdentityVerificationRequest
-        .then(({userUid, verificationUid}) => {
+        .then(verificationUid => {
             return obtainIdentityVerification(userUid, verificationUid);
         },
         reason => {
@@ -106,7 +108,7 @@ function sendIdentityVerificationRequest(token, userUid) {
         admin.messaging().sendToDevice(token, payload)
             .then(response => {
                 console.log('Successfully sent message:', response);
-                def.resolve({userUid: userUid, verificationUid: verificationUid});
+                def.resolve(verificationUid);
             })
             .catch(error => {
                 console.error("Error sending message:", error);
@@ -125,8 +127,8 @@ function createVerificationPayload(userUid, verificationUid) {
         console.log('Creating payload about user:', JSON.stringify(user));
         let payload =
             {
+                // TODO: priority: 'high',
                 data: {
-                    priority: 'high',
                     messageType: 'identity',
                     userEmail: user.email,
                     userName: user.displayName,

@@ -20,7 +20,7 @@ module.exports.getTokenByUid = function getTokenByUid(userUid) {
                 def.reject();
             } else {
                 console.log('Got token:', snapshot.val());
-                def.resolve({token: snapshot.val(), userUid: userUid});
+                def.resolve(snapshot.val());
             }
         });
     return def.promise;
