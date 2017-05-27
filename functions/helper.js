@@ -42,3 +42,10 @@ module.exports.getOwnerByComputer = function getOwnerByComputer(computerUid) {
     });
     return def.promise;
 };
+
+module.exports.getIp = function getIp(req){
+    return req.headers['x-forwarded-for'] ||
+        req.connection.remoteAddress ||
+        req.socket.remoteAddress ||
+        req.connection.socket.remoteAddress;
+};

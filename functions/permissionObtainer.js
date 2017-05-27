@@ -50,7 +50,7 @@ module.exports.obtainPermission = function obtainPermission(guestEmail, computer
             return obtainPermissionValue(ownerUid, permissionUid, computerUid, guestUid);
         },
         reason => {
-            def.resolve({isPermitted: true, message: reason});
+            def.resolve({isPermitted: false, message: reason});
         })
 
         // obtainPermissionValue
@@ -81,7 +81,7 @@ function obtainPermissionValue(ownerUid, permissionUid, computerUid, guestUid) {
         console.warn(`Request was not answered in a ${timeout / 1000} seconds time frame.`);
         permissionRef.off(); //Remove listener
         def.resolve({isPermitted: false, message: `Request was not answered in a ${timeout / 1000} seconds time frame.`});
-    }, timeout);
+    }, timeout + 4 * 1000); // 4 seconds for delay
 
     permissionRef.on('child_added', snapshot => {
         let identityFlag = snapshot.val();
@@ -137,10 +137,13 @@ function createPermissionRequestPayload(guest, computerUid, permissionUid) {
                     guestEmail: guest.email,
                     guestName: guest.displayName,
                     guestPhotoUrl: guest.photoURL,
-                    guestUid: guest.uid,
+                    computerName: computer.name,
+                    computerIp: computer.ip || 'ip is not available',
+                    deadline: (Math.round(new Date().getTime()/1000.0) + 120).toString(),
+                    // for permission conformation
+                    permissionUid: permissionUid,
                     computerUid: computerUid,
-                    computerName: computer.name, //unnecessary
-                    permissionUid: permissionUid
+                    guestUid: guest.uid
                 }
             };
         console.log('Created payload:', payload);
@@ -148,3 +151,55 @@ function createPermissionRequestPayload(guest, computerUid, permissionUid) {
     });
     return def.promise;
 }
+
+
+module.exports.logPermissionRequest = function logPermissionRequest(guestEmail, computerUid, answer, time) {
+    let guest;
+    let computer;
+
+    console.log(`Logging Permission request`);
+
+    admin.auth().getUserByEmail(guestEmail).then(guest_ => {
+        guest = guest_;
+        console.log(`Guest: ${guest.email}`);
+        admin.database().ref('Computers').child(computerUid).on('value', snapshot => {
+            computer = snapshot.val();
+            console.log(`Computer: ${computer.name}`);
+            console.log(`answer: ${JSON.stringify(answer)}`);
+
+            // log to guest activity
+            admin.database().ref('Users').child(guest.uid).child('activityLog').push().set(
+                {
+                    type: 'Permission request',
+                    result: answer.access ? "Permitted" : "Denied",
+                    message: answer.message || null,
+                    computerName: computer.name,
+                    time: time,
+                    negtime: 0-time
+                }
+            ).then(() => {
+                console.log('Log successfully logged');
+            }).catch(console.error);
+
+            if (guest.uid !== computer.ownerUid){
+                //log to owner activity
+                let message = `Permission was ${answer.access ? 'given to' : 'denied from'} ${guest.displayName} (${guest.email})`;
+                message += answer.message ? ': ' + answer.message : '';
+                admin.database().ref('Users').child(computer.ownerUid).child('activityLog').push().set(
+                    {
+                        type: 'Permission request',
+                        result: answer.access ? "Permitted" : "Denied",
+                        message: message,
+                        computerName: computer.name,
+                        time: time,
+                        negtime: 0-time
+                    }
+                ).then(() => {
+                    console.log('Log successfully logged');
+                }).catch(console.error);
+            }
+        });
+
+        //TODO: Save log in the computer activity log
+    });
+};

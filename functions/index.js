@@ -3,6 +3,7 @@ var identityVerifier = require('./identityVerifier');
 var permissionObtainer = require('./permissionObtainer');
 var computerRegistration = require('./computerRegistration');
 var functions = helper.functions;
+const admin = helper.admin;
 const q = require('q');
 
 exports.obtain_identity_verification = functions.https.onRequest((req, res) => {
@@ -12,7 +13,14 @@ exports.obtain_identity_verification = functions.https.onRequest((req, res) => {
         return;
     }
     const email = req.body.email;
-    identityVerifier.verifyIdentity(email)
+    const computerUid = req.body.computerUid;
+    const ip = helper.getIp(req);
+    console.log('ip:', ip);
+
+    admin.database().ref('Computers').child(computerUid).child('ip').set(ip)
+        .then(()=>{
+            return identityVerifier.verifyIdentity(email, computerUid);
+        })
         .then(({isVerified, message}) => {
             let answer = {
                 access: isVerified,
@@ -39,12 +47,19 @@ exports.obtain_admin_permission = functions.https.onRequest((req, res) => {
     }
     const guestEmail = req.body.email;
     const computerUid = req.body.computerUid;
-    permissionObtainer.obtainPermission(guestEmail, computerUid)
+    const time = Math.round(new Date().getTime()/1000.0);
+    const ip = helper.getIp(req);
+    console.log('ip:', ip);
+    admin.database().ref('Computers').child(computerUid).child('ip').set(ip)
+        .then(()=>{
+            return permissionObtainer.obtainPermission(guestEmail, computerUid);
+        })
         .then(({isPermitted, message}) => {
             let answer = {
                 access: isPermitted,
                 message: message
             };
+            permissionObtainer.logPermissionRequest(guestEmail,computerUid, answer, time);
             answer = JSON.stringify(answer);
             console.log('Sent:', answer);
             res.status(200).send(answer);
@@ -89,4 +104,13 @@ exports.computer_registration = functions.https.onRequest((req, res) => {
             message: `internal error: ${error.message}`
         });
     });
+});
+
+exports.computer_mirroring = functions.database.ref('/Computers/{computerUid}').onWrite(event => {
+    let computerData = event.data.val();
+    let ownerUid = computerData.ownerUid;
+    delete computerData.ownerUid;
+    console.log(`Found change on ${event.data.key} with owner ${ownerUid}`);
+    if (ownerUid === undefined){ return; }
+    return admin.database().ref(`Users/${ownerUid}/computers/`).child(event.data.key).set(computerData);
 });

@@ -7,7 +7,7 @@ const admin = helper.admin;
 const q = require('q');
 
 
-module.exports.verifyIdentity = function verifyIdentity(email) {
+module.exports.verifyIdentity = function verifyIdentity(email, computerUid) {
     let def = q.defer();
     let userUid;
 
@@ -23,7 +23,7 @@ module.exports.verifyIdentity = function verifyIdentity(email) {
 
         // getTokenByUid
         .then(token => {
-            return sendIdentityVerificationRequest(token, userUid);
+            return sendIdentityVerificationRequest(token, userUid, computerUid);
         },
         reason => {
             def.resolve({
@@ -99,11 +99,11 @@ function obtainIdentityVerification(userUid, verificationUid) {
     return def.promise;
 }
 
-function sendIdentityVerificationRequest(token, userUid) {
+function sendIdentityVerificationRequest(token, userUid, computerUid) {
     console.log('Sending verification request to:', token);
     let def = q.defer();
     let verificationUid = admin.database().ref("IdentityVerifications").push().key;
-    createVerificationPayload(userUid, verificationUid).then(payload => {
+    createVerificationPayload(userUid, verificationUid, computerUid).then(payload => {
         console.log('Sending:', payload);
         admin.messaging().sendToDevice(token, payload)
             .then(response => {
@@ -121,22 +121,25 @@ function sendIdentityVerificationRequest(token, userUid) {
     return def.promise;
 }
 
-function createVerificationPayload(userUid, verificationUid) {
+function createVerificationPayload(userUid, verificationUid, computerUid) {
     let def = q.defer();
     admin.auth().getUser(userUid).then(user => {
         console.log('Creating payload about user:', JSON.stringify(user));
-        let payload =
-            {
-                // TODO: priority: 'high',
-                data: {
-                    messageType: 'identity',
-                    userEmail: user.email,
-                    userName: user.displayName,
-                    userPhotoUrl: user.photoURL,
-                    verificationUid: verificationUid
-                }
-            };
-        def.resolve(payload);
+        admin.database().ref('Computers').child(computerUid).on('value', snapshot => {
+            let computerData = snapshot.val();
+            let payload =
+                {
+                    // TODO: priority: 'high',
+                    data: {
+                        messageType: 'identity',
+                        userName: user.displayName,
+                        computerName: computerData.name,
+                        // computerLoction:
+                        verificationUid: verificationUid
+                    }
+                };
+            def.resolve(payload);
+        });
     });
     return def.promise;
 }
