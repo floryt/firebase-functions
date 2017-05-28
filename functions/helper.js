@@ -49,3 +49,9 @@ module.exports.getIp = function getIp(req){
         req.socket.remoteAddress ||
         req.connection.socket.remoteAddress;
 };
+
+module.exports.getSnapshot = function getSnapshot(ref) {
+    let def = q.defer();
+    ref.on('value', def.resolve);
+    return def.promise;
+};

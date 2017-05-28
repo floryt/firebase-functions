@@ -23,6 +23,7 @@ module.exports.obtainPermission = function obtainPermission(guestEmail, computer
         // getUserByEmail
         .then(guest_ => {
             if (ownerUid === guest_.uid) {  // if guest is owner permit immediately
+                console.log('The guest is the owner.');
                 def.resolve({isPermitted: true});
             } else {
                 guest = guest_;
@@ -31,12 +32,14 @@ module.exports.obtainPermission = function obtainPermission(guestEmail, computer
         },
         reason => {
             console.error("Failed to get user by email:", reason);
-            def.resolve({isVerified: false, message: 'This user does not exists.'});
+            def.resolve({isPermitted: false, message: 'This user does not exists.'});
         })
 
         // getTokenByUid
         .then((token) => {
-            return sendPermissionRequest(token, guest, computerUid);
+            if (def.promise.isPending()){
+                return sendPermissionRequest(token, guest, computerUid);
+            }
         },
         reason => {
             def.resolve({
@@ -47,7 +50,9 @@ module.exports.obtainPermission = function obtainPermission(guestEmail, computer
 
         // sendPermissionRequest
         .then(({guestUid, permissionUid}) => {
-            return obtainPermissionValue(ownerUid, permissionUid, computerUid, guestUid);
+            if (def.promise.isPending()) {
+                return obtainPermissionValue(ownerUid, permissionUid, computerUid, guestUid);
+            }
         },
         reason => {
             def.resolve({isPermitted: false, message: reason});
@@ -55,13 +60,20 @@ module.exports.obtainPermission = function obtainPermission(guestEmail, computer
 
         // obtainPermissionValue
         .then(({isPermitted, message}) => {
-            def.resolve({isPermitted: isPermitted, message: message});
+            if (def.promise.isPending()) {
+                def.resolve({isPermitted: isPermitted, message: message});
+            }
         })
 
         // Unhandled rejection or exception
         .catch(error => {
             console.error('Error in obtaining permission:', error);
-            def.reject();
+            if (def.promise.isPending()) {
+                def.resolve({
+                    isPermitted: false,
+                    message: 'Unknown error happened. Please try again later.'
+                });
+            }
         });
 
 
@@ -167,13 +179,16 @@ module.exports.logPermissionRequest = function logPermissionRequest(guestEmail, 
             console.log(`Computer: ${computer.name}`);
             console.log(`answer: ${JSON.stringify(answer)}`);
 
+            if (!computer.name)
+                answer.message = 'The computer you tried to sign in to is not registered.';
+
             // log to guest activity
             admin.database().ref('Users').child(guest.uid).child('activityLog').push().set(
                 {
                     type: 'Permission request',
                     result: answer.access ? "Permitted" : "Denied",
                     message: answer.message || null,
-                    computerName: computer.name,
+                    computerName: computer.name || null,
                     time: time,
                     negtime: 0-time
                 }
@@ -181,7 +196,7 @@ module.exports.logPermissionRequest = function logPermissionRequest(guestEmail, 
                 console.log('Log successfully logged');
             }).catch(console.error);
 
-            if (guest.uid !== computer.ownerUid){
+            if (guest.uid !== computer.ownerUid && computer.ownerUid){
                 //log to owner activity
                 let message = `Permission was ${answer.access ? 'given to' : 'denied from'} ${guest.displayName} (${guest.email})`;
                 message += answer.message ? ': ' + answer.message : '';
@@ -201,5 +216,24 @@ module.exports.logPermissionRequest = function logPermissionRequest(guestEmail, 
         });
 
         //TODO: Save log in the computer activity log
+    }).catch(error => {
+        let message = `Permission was ${answer.access ? 'given to' : 'denied from'} unknown user (${guestEmail})`;
+        message += answer.message ? ': ' + answer.message : '';
+
+        helper.getSnapshot(admin.database().ref('Computers').child(computerUid)).then(snapshot => {
+            let computer = snapshot.val();
+            admin.database().ref('Users').child(computer.ownerUid).child('activityLog').push().set(
+                {
+                    type: 'Permission request',
+                    result: answer.access ? "Permitted" : "Denied",
+                    message: message,
+                    computerName: computer.name,
+                    time: time,
+                    negtime: 0 - time
+                }
+            ).then(() => {
+                console.log('Log successfully logged');
+            }).catch(console.error);
+        });
     });
 };
