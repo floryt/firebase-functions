@@ -165,24 +165,32 @@ function createPermissionRequestPayload(guest, computerUid, permissionUid) {
 }
 
 
+function safeGetUserByEmail(getUserByEmail) {
+    let def = q.defer();
+    getUserByEmail.then(def.resolve).catch(error => {
+        def.resolve(undefined);
+    });
+    return def.promise;
+}
 module.exports.logPermissionRequest = function logPermissionRequest(guestEmail, computerUid, answer, time) {
     let guest;
     let computer;
 
     console.log(`Logging Permission request`);
-
-    admin.auth().getUserByEmail(guestEmail).then(guest_ => {
+    console.log(`answer: ${JSON.stringify(answer)}`);
+    safeGetUserByEmail(admin.auth().getUserByEmail(guestEmail)).then(guest_ => {
+        console.log(`Guest: ${JSON.stringify(guest_)}`);
         guest = guest_;
-        console.log(`Guest: ${guest.email}`);
-        admin.database().ref('Computers').child(computerUid).on('value', snapshot => {
-            computer = snapshot.val();
-            console.log(`Computer: ${computer.name}`);
-            console.log(`answer: ${JSON.stringify(answer)}`);
+        return helper.getSnapshot(admin.database().ref('Computers').child(computerUid));
+    }).then(snapshot => {
+        computer = snapshot.val();
+        console.log(`Computer: ${computer.name}`);
 
-            if (!computer.name)
-                answer.message = 'The computer you tried to sign in to is not registered.';
+        if (!computer.name)
+            answer.message = 'The computer you tried to sign in to is not registered.';
 
-            // log to guest activity
+        // log to guest activity
+        if (guest){
             admin.database().ref('Users').child(guest.uid).child('activityLog').push().set(
                 {
                     type: 'Permission request',
@@ -195,33 +203,16 @@ module.exports.logPermissionRequest = function logPermissionRequest(guestEmail, 
             ).then(() => {
                 console.log('Log successfully logged');
             }).catch(console.error);
+        }
 
-            if (guest.uid !== computer.ownerUid && computer.ownerUid){
-                //log to owner activity
-                let message = `Permission was ${answer.access ? 'given to' : 'denied from'} ${guest.displayName} (${guest.email})`;
-                message += answer.message ? ': ' + answer.message : '';
-                admin.database().ref('Users').child(computer.ownerUid).child('activityLog').push().set(
-                    {
-                        type: 'Permission request',
-                        result: answer.access ? "Permitted" : "Denied",
-                        message: message,
-                        computerName: computer.name,
-                        time: time,
-                        negtime: 0-time
-                    }
-                ).then(() => {
-                    console.log('Log successfully logged');
-                }).catch(console.error);
-            }
-        });
+        if (computer.ownerUid){ //log if there is a computer owner
+            if (guest) //if there is a guest
+                if(guest.uid === computer.ownerUid) return; //check if the guest is the owner
+            //log to owner activity
+            let message;
 
-        //TODO: Save log in the computer activity log
-    }).catch(error => {
-        let message = `Permission was ${answer.access ? 'given to' : 'denied from'} unknown user (${guestEmail})`;
-        message += answer.message ? ': ' + answer.message : '';
-
-        helper.getSnapshot(admin.database().ref('Computers').child(computerUid)).then(snapshot => {
-            let computer = snapshot.val();
+            message = `Permission was ${answer.access ? 'given to' : 'denied from'} ${guest ? `${guest.displayName} (${guest.email})` : `unknown user (${guestEmail})`}`;
+            message += answer.message ? ': ' + answer.message : '';
             admin.database().ref('Users').child(computer.ownerUid).child('activityLog').push().set(
                 {
                     type: 'Permission request',
@@ -229,11 +220,12 @@ module.exports.logPermissionRequest = function logPermissionRequest(guestEmail, 
                     message: message,
                     computerName: computer.name,
                     time: time,
-                    negtime: 0 - time
+                    negtime: 0-time
                 }
             ).then(() => {
                 console.log('Log successfully logged');
             }).catch(console.error);
-        });
-    });
+        }
+        //TODO: Save log in the computer activity log
+    }).catch(console.error);
 };
