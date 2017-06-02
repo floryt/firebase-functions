@@ -14,6 +14,7 @@ exports.obtain_identity_verification = functions.https.onRequest((req, res) => {
     }
     const email = req.body.email;
     const computerUid = req.body.computerUid;
+    const time = Math.round(new Date().getTime()/1000.0);
     const ip = helper.getIp(req);
     console.log('ip:', ip);
 
@@ -26,6 +27,7 @@ exports.obtain_identity_verification = functions.https.onRequest((req, res) => {
                 access: isVerified,
                 message: message
             };
+            identityVerifier.logIdentityVerification(email, computerUid, answer, time);
             answer = JSON.stringify(answer);
             console.log('Sent:', answer);
             res.status(200).send(answer);
@@ -81,6 +83,18 @@ exports.connectivity_check = functions.https.onRequest((req, res) => {
 exports.dll_mock = functions.https.onRequest((req, res) => {
     console.log('Got:', req.method);
     res.status(200).send({access: true, message: "I love pizza!"});
+});
+
+exports.service = functions.https.onRequest((req, res) => {
+    console.log(`Got: ${req.method}, with data: ${JSON.stringify(req.body)}`);
+    const items = ['lock', 'shutdown', 'present_message'];
+    const item = items[Math.floor(Math.random() * items.length)];
+    let response = {
+        command: item,
+        message: item === 'present_message' ? 'Custom message' : undefined
+    };
+    console.log(`Send: ${JSON.stringify(response)}`);
+    res.status(200).send(response);
 });
 
 exports.computer_registration = functions.https.onRequest((req, res) => {

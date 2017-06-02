@@ -55,3 +55,11 @@ module.exports.getSnapshot = function getSnapshot(ref) {
     ref.on('value', def.resolve);
     return def.promise;
 };
+
+module.exports.safeGetUserByEmail = function safeGetUserByEmail(getUserByEmail) {
+    let def = q.defer();
+    getUserByEmail.then(def.resolve).catch(error => {
+        def.resolve(undefined);
+    });
+    return def.promise;
+}
