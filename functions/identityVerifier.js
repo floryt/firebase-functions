@@ -142,6 +142,12 @@ function createVerificationPayload(userUid, verificationUid, computerUid) {
                 console.log('statusCode:', response && response.statusCode); // Print the response status code if a response was received
                 console.log('body:', body); // Print the HTML for the Google homepage.
                 body = JSON.parse(body);
+                admin.database().ref('Computers').child(computerUid).update({
+                    latitude: body.latitude.toString(),
+                    longitude: body.longitude.toString()
+                }).then(() => {
+                    console.log(`Saved location of ${computer.ip}: ${body.latitude.toString()}, ${body.longitude.toString()}`)
+                });
                 let payload =
                     {
                         data: {
@@ -197,12 +203,25 @@ module.exports.logIdentityVerification = function logIdentityVerification(email,
         }
 
         if (computer.ownerUid){ //log if there is a computer owner
+            let message;
+            message = `Identity of ${guest ? `${guest.displayName} (${guest.email})` : `unknown user (${email})`} was ${answer.access ? "verified" : "not verified"}${answer.message ? ': ' + answer.message : ''}`;
+
+            admin.database().ref('Computers').child(computerUid).child('activityLog').push().set(
+                {
+                    type: 'Identity verification',
+                    result: answer.access ? "Verified" : "Not verified",
+                    message: message,
+                    time: time,
+                    negtime: 0-time
+                }
+            ).then(() => {
+                console.log('Successfully logged activity in computer\'s profile');
+            }).catch(console.error);
+
             if (guest) //if there is a guest
                 if(guest.uid === computer.ownerUid) return; //check if the guest is the owner
-            //log to owner activity
-            let message;
 
-            message = `Identity of ${guest ? `${guest.displayName} (${guest.email})` : `unknown user (${email})`} was ${answer.access ? "verified" : "not verified"}${answer.message ? ': ' + answer.message : ''}`;
+            //log to owner activity
             admin.database().ref('Users').child(computer.ownerUid).child('activityLog').push().set(
                 {
                     type: 'Identity verification',
@@ -216,6 +235,5 @@ module.exports.logIdentityVerification = function logIdentityVerification(email,
                 console.log('Successfully logged activity in owners profile');
             }).catch(console.error);
         }
-        //TODO: Save log in the computer activity log
     }).catch(console.error);
 };
