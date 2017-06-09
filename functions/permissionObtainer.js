@@ -198,12 +198,24 @@ module.exports.logPermissionRequest = function logPermissionRequest(guestEmail, 
         }
 
         if (computer.ownerUid){ //log if there is a computer owner
+            let message;
+            message = `Permission was ${answer.access ? 'given to' : 'denied from'} ${guest ? `${guest.displayName} (${guest.email})` : `unknown user (${guestEmail})`}${answer.message ? ': ' + answer.message : ''}`;
+            //log computer's activity
+            admin.database().ref('Computers').child(computerUid).child('activityLog').push().set(
+                {
+                    type: 'Permission request',
+                    result: answer.access ? "Permitted" : "Denied",
+                    message: message,
+                    time: time,
+                    negtime: 0-time
+                }
+            ).then(() => {
+                console.log('Successfully logged activity in computers profile');
+            }).catch(console.error);
+
             if (guest) //if there is a guest
                 if(guest.uid === computer.ownerUid) return; //check if the guest is the owner
             //log to owner activity
-            let message;
-
-            message = `Permission was ${answer.access ? 'given to' : 'denied from'} ${guest ? `${guest.displayName} (${guest.email})` : `unknown user (${guestEmail})`}${answer.message ? ': ' + answer.message : ''}`;
             admin.database().ref('Users').child(computer.ownerUid).child('activityLog').push().set(
                 {
                     type: 'Permission request',
