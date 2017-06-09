@@ -229,6 +229,5 @@ module.exports.logPermissionRequest = function logPermissionRequest(guestEmail, 
                 console.log('Successfully logged activity in owners profile');
             }).catch(console.error);
         }
-        //TODO: Save log in the computer activity log
     }).catch(console.error);
 };
