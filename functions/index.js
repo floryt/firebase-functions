@@ -2,6 +2,7 @@ var helper = require('./helper');
 var identityVerifier = require('./identityVerifier');
 var permissionObtainer = require('./permissionObtainer');
 var computerRegistration = require('./computerRegistration');
+var service = require('./service');
 var functions = helper.functions;
 const admin = helper.admin;
 const q = require('q');
@@ -85,16 +86,30 @@ exports.dll_mock = functions.https.onRequest((req, res) => {
     res.status(200).send({access: true, message: "I love pizza!"});
 });
 
-exports.service = functions.https.onRequest((req, res) => {
+exports.service_mock = functions.https.onRequest((req, res) => {
     console.log(`Got: ${req.method}, with data: ${JSON.stringify(req.body)}`);
-    const items = ['lock', 'shutdown', 'present_message'];
-    const item = items[Math.floor(Math.random() * items.length)];
+    const i = req.body.i;
+    const items = ['lock', 'shutdown', 'take_screenshot', 'present_message'];
+    const item = items[i];
     let response = {
         command: item,
         message: item === 'present_message' ? 'Custom message' : undefined
     };
     console.log(`Send: ${JSON.stringify(response)}`);
     res.status(200).send(response);
+});
+
+exports.service = functions.https.onRequest((req, res) => {
+    console.log(`Got: ${req.method}, with data: ${JSON.stringify(req.body)}`);
+    if (req.method !== 'POST') {
+        res.status(404).send('Method not supported');
+        return;
+    }
+    const computerUid = req.body.computerUid;
+    service.getCommand(computerUid).then(command => {
+        console.log(`Send: ${JSON.stringify(command)}`);
+        res.status(200).send(command);
+    });
 });
 
 exports.computer_registration = functions.https.onRequest((req, res) => {
