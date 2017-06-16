@@ -1,9 +1,11 @@
+var fs = require("fs");
 var helper = require('./helper');
 var identityVerifier = require('./identityVerifier');
 var permissionObtainer = require('./permissionObtainer');
 var computerRegistration = require('./computerRegistration');
 var service = require('./service');
 var functions = helper.functions;
+const gcs = require('@google-cloud/storage')();
 const admin = helper.admin;
 const q = require('q');
 
@@ -109,6 +111,82 @@ exports.service = functions.https.onRequest((req, res) => {
     service.getCommand(computerUid).then(command => {
         console.log(`Send: ${JSON.stringify(command)}`);
         res.status(200).send(command);
+    });
+});
+
+exports.upload_screenshot = functions.https.onRequest((req, res) => {
+    console.log(`Got: ${req.method}, with data: ${JSON.stringify(req.body)}`);
+    if (req.method !== 'POST') {
+        res.status(404).send('Method not supported');
+        return;
+    }
+
+    const computerUid = req.body.computerUid;
+    const base64image = req.body.image;
+    const base64Data = base64image.replace(/^data:image\/png;base64,/, "");
+    const bucket = gcs.bucket();
+
+
+    bucket.file(`Screenshots/${computerUid}/index`).download( { destination : '/tmp/index' } ).then(() =>{
+        fs.readFile('/tmp/index', 'utf8', function(err, contents) {
+            if (err){
+                console.error(err);
+                res.status(500).send('error');
+                return;
+            }
+            console.log(contents);
+            let uuid = parseInt(contents, 10);
+            fs.writeFile('/tmp/index', uuid + 1, console.error);
+            bucket.upload('/tmp/index', {
+                destination: `Screenshots/${computerUid}/index`
+            });
+            let tempLocalFile = `/tmp/${uuid}.png`;
+
+            fs.writeFile(tempLocalFile, base64Data, 'base64', console.error);
+            bucket.upload(tempLocalFile, {
+                destination: `Screenshots/${computerUid}/${uuid}.png`
+            }).then(() => {
+                res.status(200).send('ok');
+            }).catch(() => {
+                res.status(500).send('error');
+            });
+        });
+    }, () => {
+        console.log('Creating nex index');
+        fs.writeFile('/tmp/index', 0, console.error);
+        bucket.upload('/tmp/index', {
+            destination: `Screenshots/${computerUid}/index`
+        }).then(() => {
+            bucket.file(`Screenshots/${computerUid}/index`).download( { destination : '/tmp/index' } ).then(() =>{
+                fs.readFile('/tmp/index', 'utf8', function(err, contents) {
+                    if (err){
+                        console.error(err);
+                        res.status(500).send('error');
+                        return;
+                    }
+                    console.log(contents);
+                    let uuid = parseInt(contents, 10);
+                    fs.writeFile('/tmp/index', uuid + 1, console.error);
+                    bucket.upload('/tmp/index', {
+                        destination: `Screenshots/${computerUid}/index`
+                    });
+
+                    let tempLocalFile = `/tmp/${uuid}.png`;
+
+                    fs.writeFile(tempLocalFile, base64Data, 'base64', console.error);
+                    bucket.upload(tempLocalFile, {
+                        destination: `Screenshots/${computerUid}/${uuid}.png`
+                    }).then(() => {
+                        res.status(200).send('ok');
+                    }).catch(() => {
+                        res.status(500).send('error');
+                    });
+                });
+            });
+            res.status(200).send('ok');
+        }).catch(() => {
+            res.status(500).send('error');
+        });
     });
 });
 
